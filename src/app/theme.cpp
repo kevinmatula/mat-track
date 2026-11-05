@@ -267,6 +267,30 @@ bool button(const char* label, ImVec2 size, bool enabled, bool is_default) {
   return clicked && enabled;
 }
 
+bool toggle_button(const char* label, bool active, ImVec2 size) {
+  const char* end = label_end(label);
+  const ImVec2 text = ImGui::CalcTextSize(label, end);
+  const ImGuiStyle& style = ImGui::GetStyle();
+  if (size.x <= 0) size.x = text.x + style.FramePadding.x * 2;
+  if (size.y <= 0) size.y = text.y + style.FramePadding.y * 2;
+
+  const ImVec2 min = snap(ImGui::GetCursorScreenPos());
+  const ImVec2 max = {min.x + std::floor(size.x), min.y + std::floor(size.y)};
+  const bool clicked = ImGui::InvisibleButton(label, size);
+  const bool hovered = ImGui::IsItemHovered();
+  const bool down = active || (ImGui::IsItemActive() && hovered);
+
+  const Palette& p = palette();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->AddRectFilled(min, max, active ? p.light : (hovered ? p.button_hot : p.button));
+  draw_bevel(dl, min, max, down ? Bevel::Pressed : Bevel::Raised);
+  const float shift = down ? g_px : 0.0f;
+  dl->AddText(snap({min.x + (size.x - text.x) * 0.5f + shift,
+                    min.y + (size.y - text.y) * 0.5f + shift}),
+              p.text, label, end);
+  return clicked;
+}
+
 void begin_group(const char* caption, float width) {
   const ImVec2 start = snap(ImGui::GetCursorScreenPos());
   if (width <= 0) width = avail_width();
@@ -387,6 +411,25 @@ bool begin_dialog(const char* title) {
 
 void end_dialog() { ImGui::EndPopup(); }
 
+bool begin_tooltip() {
+  const Palette& p = palette();
+  // Pushed in the parent window and popped there again in end_tooltip().
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, g4(p.field));
+  ImGui::PushStyleColor(ImGuiCol_Border, g4(p.dark_shadow));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {8 * g_px, 6 * g_px});
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {8 * g_px, 3 * g_px});
+  if (ImGui::BeginTooltip()) return true;
+  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor(2);
+  return false;
+}
+
+void end_tooltip() {
+  ImGui::EndTooltip();
+  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor(2);
+}
+
 void lcd_readout(const char* text, ImVec2 size) {
   push_timer_font();
   const ImVec2 t = ImGui::CalcTextSize(text);
@@ -438,6 +481,7 @@ void status_bar(std::initializer_list<const char*> cells) {
 }
 
 void push_timer_font() { ImGui::PushFont(nullptr, kTimerFontSize); }
+void push_small_font() { ImGui::PushFont(nullptr, kSmallFontSize); }
 void pop_font() { ImGui::PopFont(); }
 
 }  // namespace mattrack::ui

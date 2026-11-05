@@ -126,3 +126,55 @@ TEST_CASE("total_between sums an inclusive span", "[stats]") {
   CHECK(total_between(days, june.first, june.last).sessions == 5);
   CHECK(total_between(days, ymd(2024, 7, 1), ymd(2024, 7, 31)) == DayTotal{});
 }
+
+TEST_CASE("stepping back by weeks and months", "[stats]") {
+  const Date d = ymd(2026, 11, 4);  // Wednesday
+  CHECK(week_back(d, WeekStart::Monday, 0) == DateSpan{ymd(2026, 11, 2), ymd(2026, 11, 8)});
+  CHECK(week_back(d, WeekStart::Monday, 1) == DateSpan{ymd(2026, 10, 26), ymd(2026, 11, 1)});
+  CHECK(week_back(d, WeekStart::Sunday, 1) == DateSpan{ymd(2026, 10, 25), ymd(2026, 10, 31)});
+
+  CHECK(month_back(d, 0) == DateSpan{ymd(2026, 11, 1), ymd(2026, 11, 30)});
+  CHECK(month_back(d, 1) == DateSpan{ymd(2026, 10, 1), ymd(2026, 10, 31)});
+  CHECK(month_back(d, 9) == DateSpan{ymd(2026, 2, 1), ymd(2026, 2, 28)});
+  CHECK(month_back(d, 11) == DateSpan{ymd(2025, 12, 1), ymd(2025, 12, 31)});  // across a year
+  CHECK(month_back(ymd(2024, 3, 31), 1) == DateSpan{ymd(2024, 2, 1), ymd(2024, 2, 29)});
+}
+
+TEST_CASE("summarize a period", "[stats]") {
+  const std::vector<Session> sessions = {
+      at(ymd(2026, 11, 2), 9, 0, 60),   // Mon
+      at(ymd(2026, 11, 2), 14, 0, 30),  // Mon: 90 total
+      at(ymd(2026, 11, 3), 9, 0, 120),  // Tue: best
+      at(ymd(2026, 11, 7), 9, 0, 45),   // Sat: after "today"
+      at(ymd(2026, 10, 31), 9, 0, 300), // previous week
+  };
+  const DayTotals days = day_totals(sessions, ny(), kRollover);
+  const DateSpan week = week_of(ymd(2026, 11, 4), WeekStart::Monday);
+
+  SECTION("week in progress: future days are ignored") {
+    const PeriodSummary p = summarize(days, week, ymd(2026, 11, 4));
+    CHECK(p.total_seconds == 210 * 60);
+    CHECK(p.days_studied == 2);
+    CHECK(p.days_elapsed == 3);  // Mon..Wed
+    CHECK(p.average_seconds() == 70 * 60);
+    CHECK(p.best_day == ymd(2026, 11, 3));
+    CHECK(p.best_seconds == 120 * 60);
+  }
+  SECTION("finished week counts all seven days") {
+    const PeriodSummary p = summarize(days, week, ymd(2026, 12, 1));
+    CHECK(p.total_seconds == 255 * 60);
+    CHECK(p.days_elapsed == 7);
+    CHECK(p.days_studied == 3);
+  }
+  SECTION("a future period is empty") {
+    const PeriodSummary p = summarize(days, week, ymd(2026, 10, 1));
+    CHECK(p == PeriodSummary{});
+    CHECK(p.average_seconds() == 0);
+  }
+  SECTION("no data") {
+    const PeriodSummary p = summarize({}, week, ymd(2026, 11, 4));
+    CHECK(p.days_elapsed == 3);
+    CHECK(p.days_studied == 0);
+    CHECK(p.total_seconds == 0);
+  }
+}

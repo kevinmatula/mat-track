@@ -5,8 +5,9 @@ timer, a GitHub-style heatmap of study history, and light gamification.
 
 > Work in progress. The core (rollover-aware time handling, SQLite storage,
 > timer state machine, stats, gamification, config) is done and tested. The
-> app has a working pomodoro timer that logs sessions; the heatmap, day
-> panel and gamification UI are still to come.
+> app has a working pomodoro timer that logs sessions, and a history panel
+> with year, month and week heatmaps (per-day tooltips, period totals); the
+> day panel, category filter and gamification UI are still to come.
 
 ## Build dependencies (Linux Mint 22 / Ubuntu 24.04)
 
@@ -47,7 +48,11 @@ For a fast core-only loop: `-DMAT_TRACK_BUILD_APP=OFF`.
 ```sh
 ./build/mat-track                        # data in ~/.local/share/mat-track/
 ./build/mat-track --data-dir /tmp/mt     # separate data dir for testing
+./build/mat-track --data-dir /tmp/demo --seed-demo   # ~6 months of sample data
 ```
+
+`--seed-demo` only works together with `--data-dir` and only on an empty
+database, so sample sessions can never end up in your real history.
 
 The data directory holds `mat-track.db` (SQLite) and `config.toml`, which is
 written with defaults on first run. While a session runs it also holds

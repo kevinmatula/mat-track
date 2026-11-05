@@ -5,6 +5,7 @@
 #include <array>
 #include <chrono>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -13,13 +14,23 @@
 #include "core/config.hpp"
 #include "core/db.hpp"
 #include "core/recovery.hpp"
+#include "core/stats.hpp"
 #include "core/timer.hpp"
 
 namespace mattrack {
 
+// Window size in unscaled pixels. Panels that cap their width use the
+// default size, so at the default window they fill it edge to edge.
+constexpr int kDefaultWindowWidth = 1100;
+constexpr int kDefaultWindowHeight = 700;
+constexpr int kMinWindowWidth = 900;
+constexpr int kMinWindowHeight = 600;
+
 struct AppOptions {
   // Overrides the default ~/.local/share/mat-track/.
   std::optional<std::filesystem::path> data_dir;
+  // Fill an empty database with ~6 months of synthetic sessions.
+  bool seed_demo = false;
 };
 
 // Owns SDL, ImGui, the config and the database, and runs the main loop.
@@ -71,6 +82,10 @@ class App {
   void handle_finished();
   void write_recovery(UnixSeconds utc);
   void reload_categories();
+  // Re-reads sessions and categories after anything was logged or edited.
+  void reload_history();
+  // The current study day (rollover-aware, local time zone).
+  Date today() const;
 
   // ---- crash recovery (app.cpp) ----
   std::filesystem::path recovery_path() const;
@@ -82,11 +97,16 @@ class App {
   void draw_timer_panel();
   void draw_note_box();
   void draw_recovery_dialog();
+  // ---- panels (ui_heatmap.cpp) ----
+  void draw_heatmap_panel();
+  void draw_history_toolbar();
+  void draw_day_tooltip(Date day);
 
   AppOptions options_;
   std::filesystem::path data_dir_;
   Config config_;
   std::optional<Db> db_;
+  const std::chrono::time_zone* tz_ = nullptr;
   Audio audio_;
 
   SDL_Window* window_ = nullptr;
@@ -103,6 +123,14 @@ class App {
 
   Timer timer_{TimerSettings{}};
   std::vector<Category> categories_;  // non-archived, for the dropdown
+  // History, recomputed by reload_history().
+  DayTotals day_totals_;
+  std::map<std::int64_t, std::string> category_names_;  // includes archived
+
+  // History panel: which view, and how many weeks/months back it shows.
+  enum class HistoryView { Year, Month, Week };
+  HistoryView history_view_ = HistoryView::Year;
+  int history_back_ = 0;
   std::int64_t selected_category_ = 0;
   std::string status_ = "Ready";
   Alarm alarm_ = Alarm::None;

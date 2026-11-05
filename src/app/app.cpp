@@ -11,6 +11,7 @@
 
 #include "app/theme.hpp"
 #include "app/window_util.hpp"
+#include "core/demo.hpp"
 #include "core/file_util.hpp"
 #include "core/time_util.hpp"
 
@@ -19,10 +20,6 @@ namespace mattrack {
 namespace {
 
 constexpr const char* kAppName = "mat-track";
-constexpr int kDefaultWidth = 1100;
-constexpr int kDefaultHeight = 700;
-constexpr int kMinWidth = 900;
-constexpr int kMinHeight = 600;
 
 // Main loop pacing: render at full (vsync) rate for a while after any input,
 // otherwise sleep on the event queue and redraw about once per second.
@@ -91,11 +88,35 @@ bool App::init_data() {
     return false;
   }
 
+  try {
+    tz_ = std::chrono::current_zone();
+  } catch (const std::exception& e) {
+    fail(std::string("Cannot determine the local time zone.\n\n") + e.what());
+    return false;
+  }
+
+  if (options_.seed_demo) {
+    try {
+      if (!db_->all_sessions().empty()) {
+        fail("--seed-demo needs an empty database; " + data_dir_.string() +
+             " already has sessions.");
+        return false;
+      }
+      const int n = seed_demo(*db_, now().utc, *tz_, config_.day_rollover_hour);
+      std::fprintf(stderr, "mat-track: seeded %d demo sessions into %s\n", n,
+                   data_dir_.string().c_str());
+    } catch (const std::exception& e) {
+      fail(std::string("Cannot seed demo data.\n\n") + e.what());
+      return false;
+    }
+  }
+
   timer_ = Timer(TimerSettings::from_config(config_));
   try {
     reload_categories();
+    reload_history();
   } catch (const std::exception& e) {
-    fail(std::string("Cannot read categories.\n\n") + e.what());
+    fail(std::string("Cannot read the session history.\n\n") + e.what());
     return false;
   }
   check_recovery_file();
@@ -113,14 +134,14 @@ bool App::init_window() {
   const float s = content_scale > 0 ? content_scale : 1.0f;
   const SDL_WindowFlags flags =
       SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-  window_ = SDL_CreateWindow(kAppName, static_cast<int>(kDefaultWidth * s),
-                             static_cast<int>(kDefaultHeight * s), flags);
+  window_ = SDL_CreateWindow(kAppName, static_cast<int>(kDefaultWindowWidth * s),
+                             static_cast<int>(kDefaultWindowHeight * s), flags);
   if (!window_) {
     fail(std::string("Cannot create window: ") + SDL_GetError());
     return false;
   }
-  SDL_SetWindowMinimumSize(window_, static_cast<int>(kMinWidth * s),
-                           static_cast<int>(kMinHeight * s));
+  SDL_SetWindowMinimumSize(window_, static_cast<int>(kMinWindowWidth * s),
+                           static_cast<int>(kMinWindowHeight * s));
 
   renderer_ = SDL_CreateRenderer(window_, nullptr);
   if (!renderer_) {
@@ -246,6 +267,7 @@ void App::draw_frame() {
 
   draw_timer_panel();
   draw_note_box();
+  draw_heatmap_panel();
   draw_recovery_dialog();
 
   const std::string data = "data: " + data_dir_.string();
@@ -283,6 +305,14 @@ void App::reload_categories() {
                   [&](const Category& c) { return c.id == selected_category_; });
   if (!still_there) selected_category_ = categories_.empty() ? 0 : categories_.front().id;
 }
+
+void App::reload_history() {
+  day_totals_ = day_totals(db_->all_sessions(), *tz_, config_.day_rollover_hour);
+  category_names_.clear();
+  for (const auto& c : db_->categories(/*include_archived=*/true)) category_names_[c.id] = c.name;
+}
+
+Date App::today() const { return day_key(now().utc, *tz_, config_.day_rollover_hour); }
 
 void App::update_timer() {
   const Now n = now();
@@ -403,6 +433,7 @@ void App::handle_finished() {
   if (f.loggable) {
     try {
       const std::int64_t id = db_->insert_session(f.session);
+      reload_history();
       note_session_id_ = id;
       note_buf_.fill('\0');
     } catch (const std::exception& e) {
@@ -475,6 +506,7 @@ void App::save_recovered_session() {
   }
   try {
     db_->insert_session(s);
+    reload_history();
     status_ = "Recovered session: " + format_duration(s.duration_sec) + " logged.";
   } catch (const std::exception& e) {
     fail(std::string("Could not save the recovered session; the recovery file is kept.\n\n") +

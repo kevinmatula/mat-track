@@ -38,6 +38,8 @@ add_library(mat_track_core STATIC
   src/core/gamification.cpp
   src/core/file_util.cpp
   src/core/recovery.cpp
+  src/core/heatmap.cpp
+  src/core/demo.cpp
 )
 target_include_directories(mat_track_core PUBLIC src)
 target_link_libraries(mat_track_core PUBLIC SQLite::SQLite3)
@@ -67,6 +69,7 @@ if(MAT_TRACK_BUILD_APP)
     src/app/theme.cpp
     src/app/audio.cpp
     src/app/ui_timer.cpp
+    src/app/ui_heatmap.cpp
     src/app/window_util.cpp
     ${font_src}
     ${chime_src}

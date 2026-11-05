@@ -82,6 +82,34 @@ DateSpan week_of(Date d, WeekStart starts_on) {
   return {first, add_days(first, 6)};
 }
 
+DateSpan week_back(Date d, WeekStart starts_on, int back) {
+  return week_of(add_days(d, -7 * back), starts_on);
+}
+
+DateSpan month_back(Date d, int back) {
+  const chr::year_month ym = chr::year_month{d.year(), d.month()} - chr::months{back};
+  return month_of(ym / chr::day{1});
+}
+
+PeriodSummary summarize(const DayTotals& days, DateSpan span, Date today) {
+  PeriodSummary out;
+  const Date last = std::min(span.last, today);
+  if (span.first <= last) {
+    out.days_elapsed =
+        static_cast<int>((chr::sys_days{last} - chr::sys_days{span.first}).count()) + 1;
+  }
+  for (auto it = days.lower_bound(span.first); it != days.end() && it->first <= last; ++it) {
+    const std::int64_t secs = it->second.seconds;
+    out.total_seconds += secs;
+    if (secs > 0) ++out.days_studied;
+    if (secs > out.best_seconds) {  // ">" keeps the earliest on ties
+      out.best_seconds = secs;
+      out.best_day = it->first;
+    }
+  }
+  return out;
+}
+
 DateSpan month_of(Date d) {
   return {d.year() / d.month() / chr::day{1},
           Date{d.year() / d.month() / chr::last}};

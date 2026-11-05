@@ -57,4 +57,25 @@ Date week_start(Date d, WeekStart starts_on);
 DateSpan week_of(Date d, WeekStart starts_on);
 DateSpan month_of(Date d);
 
+// The week / month `back` periods before the one containing `d`
+// (back = 0 is the current one).
+DateSpan week_back(Date d, WeekStart starts_on, int back);
+DateSpan month_back(Date d, int back);
+
+// Totals over a span, counting only days up to and including `today`.
+struct PeriodSummary {
+  std::int64_t total_seconds = 0;
+  int days_studied = 0;  // days with any study
+  int days_elapsed = 0;  // days of the span that are <= today
+  Date best_day{};       // valid only if days_studied > 0
+  std::int64_t best_seconds = 0;
+
+  // Per elapsed day, so a period in progress isn't diluted by future days.
+  std::int64_t average_seconds() const {
+    return days_elapsed > 0 ? total_seconds / days_elapsed : 0;
+  }
+  bool operator==(const PeriodSummary&) const = default;
+};
+PeriodSummary summarize(const DayTotals& days, DateSpan span, Date today);
+
 }  // namespace mattrack

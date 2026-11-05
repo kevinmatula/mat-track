@@ -13,6 +13,7 @@ namespace mattrack::ui {
 
 constexpr float kBaseFontSize = 16.0f;
 constexpr float kTimerFontSize = 96.0f;
+constexpr float kSmallFontSize = 13.0f;
 
 struct Palette {
   ImU32 face;           // window surface
@@ -57,6 +58,10 @@ void draw_bevel(ImDrawList* dl, ImVec2 min, ImVec2 max, Bevel style);
 bool button(const char* label, ImVec2 size = {0, 0}, bool enabled = true,
             bool is_default = false);
 
+// Toggle button: stays pressed in (sunken, lighter face) while `active`,
+// like a Win9x toolbar toggle. Returns true when clicked.
+bool toggle_button(const char* label, bool active, ImVec2 size = {0, 0});
+
 // Group box: an etched frame with a caption set into the top edge.
 // width <= 0 fills the available width.
 void begin_group(const char* caption, float width = 0);
@@ -80,6 +85,11 @@ bool input_text(const char* label, char* buf, std::size_t size, float width = 0)
 bool begin_dialog(const char* title);
 void end_dialog();
 
+// Win9x-style tooltip: a field-colored box with a 1px dark border. Only
+// call end_tooltip() if begin_tooltip() returned true.
+bool begin_tooltip();
+void end_tooltip();
+
 // Sunken black well with large centered text, like an LCD readout.
 void lcd_readout(const char* text, ImVec2 size = {0, 0});
 
@@ -88,6 +98,7 @@ void status_bar(std::initializer_list<const char*> cells);
 float status_bar_height();
 
 void push_timer_font();
+void push_small_font();
 void pop_font();
 
 }  // namespace mattrack::ui
