@@ -4,10 +4,10 @@
 #include <array>
 #include <cctype>
 #include <charconv>
-#include <fstream>
-#include <sstream>
 #include <stdexcept>
 #include <variant>
+
+#include "core/file_util.hpp"
 
 namespace mattrack {
 
@@ -42,7 +42,10 @@ constexpr std::array kKeys = {
     KeySpec{"daily_goal_minutes", &Config::daily_goal_minutes, 1, 1440, "daily study goal"},
     KeySpec{"streak_min_minutes", &Config::streak_min_minutes, 1, 1440,
             "minimum minutes for a day to count toward a streak"},
-    KeySpec{"sound_enabled", &Config::sound_enabled, 0, 0, "chime when a session completes"},
+    KeySpec{"sound_enabled", &Config::sound_enabled, 0, 0,
+            "repeat a jingle when a session or break ends, until you respond"},
+    KeySpec{"raise_on_alarm", &Config::raise_on_alarm, 0, 0,
+            "bring the window to the front and focus it when a session or break ends"},
     KeySpec{"invert_colors", &Config::invert_colors, 0, 0, "black on white instead (F2)"},
 };
 
@@ -230,33 +233,17 @@ std::string serialize_config(const Config& cfg) {
 
 Config load_or_create_config(const std::filesystem::path& path,
                              std::vector<std::string>* warnings) {
-  if (!std::filesystem::exists(path)) {
+  const std::optional<std::string> text = read_file(path);
+  if (!text) {
     const Config defaults;
     save_config(defaults, path);
     return defaults;
   }
-  std::ifstream in(path, std::ios::binary);
-  if (!in) throw std::runtime_error("cannot read config file " + path.string());
-  std::ostringstream text;
-  text << in.rdbuf();
-  return parse_config(text.str(), warnings);
+  return parse_config(*text, warnings);
 }
 
 void save_config(const Config& config, const std::filesystem::path& path) {
-  const auto tmp = std::filesystem::path(path).concat(".tmp");
-  {
-    std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-    if (!out) throw std::runtime_error("cannot write config file " + tmp.string());
-    out << serialize_config(config);
-    out.flush();
-    if (!out) throw std::runtime_error("cannot write config file " + tmp.string());
-  }
-  std::error_code ec;
-  std::filesystem::rename(tmp, path, ec);
-  if (ec) {
-    std::filesystem::remove(tmp, ec);
-    throw std::runtime_error("cannot replace config file " + path.string());
-  }
+  write_file_atomic(path, serialize_config(config));
 }
 
 }  // namespace mattrack

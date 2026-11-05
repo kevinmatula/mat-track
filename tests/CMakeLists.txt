@@ -7,6 +7,7 @@ add_executable(mat_track_tests
   test_timer.cpp
   test_stats.cpp
   test_gamification.cpp
+  test_recovery.cpp
 )
 target_link_libraries(mat_track_tests PRIVATE mat_track_core Catch2::Catch2WithMain)
 mat_track_warnings(mat_track_tests)

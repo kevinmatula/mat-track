@@ -42,7 +42,7 @@ UtcRange day_utc_range(Date day, const std::chrono::time_zone& tz, int rollover_
 
 Date add_days(Date d, int days);
 
-// "2h 15m", "45m", "0m". Seconds are truncated.
+// "2h 15m", "45m", "30s", "0m". Seconds are truncated once past a minute.
 std::string format_duration(std::int64_t seconds);
 
 // "YYYY-MM-DD"

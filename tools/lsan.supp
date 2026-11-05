@@ -1,0 +1,7 @@
+# LeakSanitizer suppressions for third-party code. Use with:
+#   LSAN_OPTIONS=suppressions=tools/lsan.supp ./build-asan/mat-track
+#
+# SDL3 allocates a thread-local error buffer when it records an (expected)
+# error on PulseAudio's own thread during device discovery. SDL never owns
+# that thread, so the buffer is never freed.
+leak:SDL_GetErrBuf

@@ -4,11 +4,15 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_sdlrenderer3.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <system_error>
 
 #include "app/theme.hpp"
+#include "app/window_util.hpp"
+#include "core/file_util.hpp"
+#include "core/time_util.hpp"
 
 namespace mattrack {
 
@@ -26,11 +30,15 @@ constexpr auto kActiveAfterInput = std::chrono::milliseconds(1000);
 constexpr int kIdleWaitMs = 250;
 constexpr auto kIdleRedraw = std::chrono::milliseconds(1000);
 
+// How often the crash-recovery file is refreshed while a session runs.
+constexpr MonoNs kRecoveryInterval = 15 * kNsPerSecond;
+
 }  // namespace
 
 App::App(AppOptions options) : options_(std::move(options)) {}
 
 App::~App() {
+  audio_.shutdown();  // SDL resources must go before SDL_Quit()
   if (imgui_ready_) {
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
@@ -82,6 +90,15 @@ bool App::init_data() {
     fail(std::string("Cannot open the database. No data was changed.\n\n") + e.what());
     return false;
   }
+
+  timer_ = Timer(TimerSettings::from_config(config_));
+  try {
+    reload_categories();
+  } catch (const std::exception& e) {
+    fail(std::string("Cannot read categories.\n\n") + e.what());
+    return false;
+  }
+  check_recovery_file();
   return true;
 }
 
@@ -125,6 +142,8 @@ bool App::init_window() {
   ui::load_fonts();
   update_ui_scale();
   ui::apply_theme(config_.invert_colors, ui_scale_);
+
+  audio_.init();  // optional; failures are logged and sounds stay silent
 
   SDL_ShowWindow(window_);
   return true;
@@ -184,18 +203,29 @@ int App::run() {
     }
     if (!running_) break;
 
-    // Per-iteration work that must not depend on rendering (timer tick,
-    // recovery file) goes here in later milestones.
+    // Runs every iteration, drawn or not, so the timer keeps going while
+    // the window is unfocused or minimized.
+    update_timer();
+    audio_.update();
 
     if (SDL_GetWindowFlags(window_) & SDL_WINDOW_MINIMIZED) continue;
 
     const auto now = Clock::now();
-    if (now - last_activity_ < kActiveAfterInput || now - last_draw_ >= kIdleRedraw) {
+    if (now - last_activity_ < kActiveAfterInput || now - last_draw_ >= kIdleRedraw ||
+        countdown_changed()) {
       draw_frame();
       render();
       last_draw_ = now;
       if (!vsync_) SDL_Delay(16);
     }
+  }
+
+  // Quitting mid-session keeps the recovery file, so the next start offers
+  // to save the session. (A proper "save and quit" prompt comes later.)
+  if (timer_.state() == TimerState::Running || timer_.state() == TimerState::Paused) {
+    const Now n = now();
+    timer_.tick(n.mono, n.utc);
+    write_recovery(n.utc);
   }
   return 0;
 }
@@ -214,28 +244,252 @@ void App::draw_frame() {
                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
 
-  // Placeholder content for the app shell; replaced by the real panels in
-  // later milestones.
-  const int total = static_cast<int>(std::lround(config_.focus_minutes * 60));
-  char digits[16];
-  std::snprintf(digits, sizeof digits, "%02d:%02d", total / 60, total % 60);
+  draw_timer_panel();
+  draw_note_box();
+  draw_recovery_dialog();
 
-  ui::begin_group("Timer", 420 * ui_scale_);
-  ui::lcd_readout(digits);
-  ui::button("Start", {}, true, /*is_default=*/true);
-  ImGui::SameLine();
-  ui::button("Pause", {}, false);
-  ImGui::SameLine();
-  ui::button("Stop", {}, false);
-  ui::end_group();
-
-  char scale[32];
-  std::snprintf(scale, sizeof scale, "scale %.2f", ui_scale_);
   const std::string data = "data: " + data_dir_.string();
-  ui::status_bar({"Ready", scale, data.c_str()});
+  ui::status_bar({status_.c_str(), data.c_str()});
+  drawn_countdown_ = countdown_seconds();
 
   ImGui::End();
   ImGui::Render();
+}
+
+// ---- timer plumbing ---------------------------------------------------------
+
+App::Now App::now() {
+  using namespace std::chrono;
+  return {duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count(),
+          duration_cast<seconds>(system_clock::now().time_since_epoch()).count()};
+}
+
+std::int64_t App::countdown_seconds() const {
+  const TimerState st = timer_.state();
+  if (st != TimerState::Running && st != TimerState::Paused && st != TimerState::Break &&
+      st != TimerState::BreakReady) {
+    return -1;
+  }
+  // Round up: show 50:00 at the start and 00:00 only when time is up.
+  return (timer_.remaining() + kNsPerSecond - 1) / kNsPerSecond;
+}
+
+bool App::countdown_changed() const { return countdown_seconds() != drawn_countdown_; }
+
+void App::reload_categories() {
+  categories_ = db_->categories(/*include_archived=*/false);
+  const bool still_there =
+      std::any_of(categories_.begin(), categories_.end(),
+                  [&](const Category& c) { return c.id == selected_category_; });
+  if (!still_there) selected_category_ = categories_.empty() ? 0 : categories_.front().id;
+}
+
+void App::update_timer() {
+  const Now n = now();
+  const TimerState before = timer_.state();
+  timer_.tick(n.mono, n.utc);
+
+  if (timer_.state() == TimerState::Finished) handle_finished();
+  if (before == TimerState::Break && timer_.state() != TimerState::Break) {
+    if (timer_.state() == TimerState::Running) {  // auto_start_next
+      status_ = "Break over: next session started.";
+      if (config_.sound_enabled) audio_.play(Sound::BreakEnd);
+    } else {
+      status_ = "Break over.";
+      ring(Alarm::BreakDone);
+    }
+  }
+
+  const TimerState st = timer_.state();
+  if (st == TimerState::Running || st == TimerState::Paused) {
+    // A new session (including an auto-started one) or a periodic refresh.
+    if (recovery_for_start_ != timer_.start_utc() ||
+        n.mono - last_recovery_write_ >= kRecoveryInterval) {
+      write_recovery(n.utc);
+    }
+  }
+}
+
+void App::write_recovery(UnixSeconds utc) {
+  const RecoveryState state{.start_utc = timer_.start_utc(),
+                            .category_id = timer_.category_id(),
+                            .focused_seconds = timer_.focused() / kNsPerSecond,
+                            .updated_utc = utc};
+  try {
+    save_recovery(state, recovery_path());
+    recovery_for_start_ = state.start_utc;
+    last_recovery_write_ = now().mono;
+  } catch (const std::exception& e) {
+    std::fprintf(stderr, "mat-track: %s\n", e.what());
+    status_ = "Warning: cannot write the recovery file.";
+  }
+}
+
+void App::start_session() {
+  const Now n = now();
+  if (!timer_.start(selected_category_, n.mono, n.utc)) return;
+  silence();
+  note_session_id_.reset();
+  status_ = "Focus.";
+  write_recovery(n.utc);
+}
+
+void App::pause_session() {
+  const Now n = now();
+  if (!timer_.pause(n.mono, n.utc)) return;
+  if (timer_.state() == TimerState::Finished) {
+    handle_finished();  // paused right at the target
+    return;
+  }
+  status_ = "Paused.";
+  write_recovery(n.utc);
+}
+
+void App::resume_session() {
+  const Now n = now();
+  if (!timer_.resume(n.mono, n.utc)) return;
+  status_ = "Focus.";
+  write_recovery(n.utc);
+}
+
+void App::stop_session() {
+  const Now n = now();
+  if (timer_.stop(n.mono, n.utc)) handle_finished();
+}
+
+void App::start_break() {
+  if (!timer_.start_break(now().mono)) return;
+  silence();
+  status_ = timer_.on_long_break() ? "Long break." : "Break.";
+}
+
+void App::skip_break() {
+  const Now n = now();
+  if (!timer_.skip_break(n.mono, n.utc)) return;
+  silence();
+  status_ = "Break skipped.";
+}
+
+void App::ring(Alarm alarm) {
+  alarm_ = alarm;
+  if (config_.sound_enabled) {
+    audio_.loop(alarm == Alarm::FocusDone ? Sound::Chime : Sound::BreakEnd);
+  }
+  SDL_FlashWindow(window_, SDL_FLASH_UNTIL_FOCUSED);
+  if (config_.raise_on_alarm) {
+    // Restore, raise and focus the window, and keep it above other windows
+    // until the user responds.
+    bring_to_front(window_);
+    SDL_SetWindowAlwaysOnTop(window_, true);
+    raised_for_alarm_ = true;
+  }
+}
+
+void App::silence() {
+  if (alarm_ == Alarm::None) return;
+  alarm_ = Alarm::None;
+  audio_.stop();
+  SDL_FlashWindow(window_, SDL_FLASH_CANCEL);
+  if (raised_for_alarm_) {
+    SDL_SetWindowAlwaysOnTop(window_, false);
+    raised_for_alarm_ = false;
+  }
+}
+
+void App::handle_finished() {
+  const FinishedSession f = *timer_.finished();
+  const std::string logged = format_duration(f.session.duration_sec);
+
+  if (f.loggable) {
+    try {
+      const std::int64_t id = db_->insert_session(f.session);
+      note_session_id_ = id;
+      note_buf_.fill('\0');
+    } catch (const std::exception& e) {
+      // Keep the recovery file: it still holds this session.
+      fail(std::string("Could not save the session. It is kept in the recovery file and will "
+                       "be offered again at next start.\n\n") +
+           e.what());
+      status_ = "Error: session not saved.";
+      timer_.acknowledge();
+      return;
+    }
+    switch (f.reason) {
+      case FinishReason::Completed:
+        status_ = "Session complete: " + logged + " logged.";
+        break;
+      case FinishReason::Stopped:
+        status_ = "Stopped early: " + logged + " logged.";
+        break;
+      case FinishReason::MaxDuration:
+        status_ = "Auto-stopped at the " + format_duration(std::llround(config_.max_session_minutes * 60)) +
+                  " limit: " + logged + " logged.";
+        break;
+    }
+  } else {
+    status_ = "Under " + std::to_string(config_.min_log_seconds) + "s: not logged.";
+  }
+
+  remove_recovery(recovery_path());
+  recovery_for_start_ = -1;
+  timer_.acknowledge();
+  if (timer_.state() == TimerState::BreakReady) ring(Alarm::FocusDone);
+}
+
+// ---- crash recovery -----------------------------------------------------------
+
+std::filesystem::path App::recovery_path() const { return data_dir_ / "active_session.json"; }
+
+void App::check_recovery_file() {
+  const auto path = recovery_path();
+  std::optional<std::string> text;
+  try {
+    text = read_file(path);
+  } catch (const std::exception& e) {
+    std::fprintf(stderr, "mat-track: %s\n", e.what());
+    return;
+  }
+  if (!text) return;
+
+  const std::optional<RecoveryState> state = parse_recovery(*text);
+  if (!state) {
+    // Unreadable: set it aside rather than deleting it.
+    std::error_code ec;
+    std::filesystem::rename(path, std::filesystem::path(path).concat(".bad"), ec);
+    std::fprintf(stderr, "mat-track: unreadable recovery file moved to %s.bad\n",
+                 path.string().c_str());
+    return;
+  }
+  if (state->focused_seconds < config_.min_log_seconds) {
+    remove_recovery(path);  // too short to have been logged anyway
+    return;
+  }
+  pending_recovery_ = state;
+}
+
+void App::save_recovered_session() {
+  Session s = recovered_session(*pending_recovery_);
+  // The category may have been removed since; fall back to the first one.
+  if (!db_->category(s.category_id) && !categories_.empty()) {
+    s.category_id = categories_.front().id;
+  }
+  try {
+    db_->insert_session(s);
+    status_ = "Recovered session: " + format_duration(s.duration_sec) + " logged.";
+  } catch (const std::exception& e) {
+    fail(std::string("Could not save the recovered session; the recovery file is kept.\n\n") +
+         e.what());
+    pending_recovery_.reset();
+    return;
+  }
+  remove_recovery(recovery_path());
+  pending_recovery_.reset();
+}
+
+void App::discard_recovered_session() {
+  remove_recovery(recovery_path());
+  pending_recovery_.reset();
+  status_ = "Interrupted session discarded.";
 }
 
 void App::render() {

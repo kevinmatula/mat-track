@@ -43,7 +43,9 @@ Date add_days(Date d, int days) {
 }
 
 std::string format_duration(std::int64_t seconds) {
-  const std::int64_t minutes = std::max<std::int64_t>(0, seconds) / 60;
+  seconds = std::max<std::int64_t>(0, seconds);
+  if (seconds > 0 && seconds < 60) return std::to_string(seconds) + "s";
+  const std::int64_t minutes = seconds / 60;
   const std::int64_t h = minutes / 60;
   const std::int64_t m = minutes % 60;
   return h > 0 ? std::to_string(h) + "h " + std::to_string(m) + "m" : std::to_string(m) + "m";

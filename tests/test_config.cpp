@@ -50,6 +50,7 @@ TEST_CASE("defaults match the spec", "[config]") {
   CHECK(c.daily_goal_minutes == 120);
   CHECK(c.streak_min_minutes == 30);
   CHECK(c.sound_enabled);
+  CHECK(c.raise_on_alarm);
   CHECK_FALSE(c.invert_colors);
 }
 
@@ -168,6 +169,7 @@ TEST_CASE("serialize/parse roundtrip", "[config]") {
   c.auto_start_next = true;
   c.week_starts_on = WeekStart::Sunday;
   c.invert_colors = true;
+  c.raise_on_alarm = false;
   c.day_rollover_hour = 0;
 
   std::vector<std::string> warnings;

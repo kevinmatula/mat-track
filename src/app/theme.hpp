@@ -2,6 +2,7 @@
 
 #include <imgui.h>
 
+#include <cstddef>
 #include <initializer_list>
 
 // Win9x-style look, in grayscale only: a silver face, 3D bevels, raised
@@ -60,6 +61,24 @@ bool button(const char* label, ImVec2 size = {0, 0}, bool enabled = true,
 // width <= 0 fills the available width.
 void begin_group(const char* caption, float width = 0);
 void end_group();
+
+// Width left on the current line: inside a group box, up to its inner
+// right edge; otherwise the window's available width.
+float avail_width();
+
+// Combo box: white sunken field with a raised arrow button. Same contract
+// as ImGui::BeginCombo / EndCombo. The label must be hidden ("##id").
+bool begin_combo(const char* label, const char* preview, bool enabled = true);
+void end_combo();
+
+// Single-line text field in a sunken frame. Returns true when Enter is
+// pressed. The label must be hidden ("##id").
+bool input_text(const char* label, char* buf, std::size_t size, float width = 0);
+
+// Modal dialog with a black title bar. Open with ImGui::OpenPopup(title);
+// call every frame; only call end_dialog() if begin_dialog() returned true.
+bool begin_dialog(const char* title);
+void end_dialog();
 
 // Sunken black well with large centered text, like an LCD readout.
 void lcd_readout(const char* text, ImVec2 size = {0, 0});

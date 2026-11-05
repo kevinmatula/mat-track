@@ -14,7 +14,14 @@ using MonoNs = std::int64_t;
 
 constexpr MonoNs kNsPerSecond = 1'000'000'000;
 
-enum class TimerState { Idle, Running, Paused, Break, Finished };
+enum class TimerState {
+  Idle,
+  Running,
+  Paused,
+  Finished,    // session over; the app logs finished() then acknowledges
+  BreakReady,  // a break is due; waits for start_break() (or skip_break())
+  Break,
+};
 
 enum class FinishReason {
   Completed,    // ran to the target length
@@ -50,8 +57,10 @@ struct FinishedSession {
 //   Idle --start--> Running <--pause/resume--> Paused
 //   Running --target reached--> Finished (Completed)
 //   Running/Paused --stop--> Finished (Stopped)
-//   Finished --acknowledge--> Break (after Completed) or Idle
-//   Break --ends or skip_break--> Idle, or Running if auto_start_next
+//   Finished --acknowledge--> BreakReady (after Completed) or Idle
+//   BreakReady --start_break--> Break
+//   BreakReady/Break --skip_break--> Idle, or Running if auto_start_next
+//   Break --ends--> Idle, or Running if auto_start_next
 class Timer {
  public:
   explicit Timer(TimerSettings settings);
@@ -63,8 +72,10 @@ class Timer {
   bool resume(MonoNs now, UnixSeconds now_utc);
   bool stop(MonoNs now, UnixSeconds now_utc);
   // Leaves Finished once the app has handled finished() (logged or not).
-  // The break, if any, is timed from the moment the session finished.
-  bool acknowledge(MonoNs now, UnixSeconds now_utc);
+  bool acknowledge();
+  // Starts the due break; it is timed from `now`, so a break the user
+  // starts late is still full length.
+  bool start_break(MonoNs now);
   bool skip_break(MonoNs now, UnixSeconds now_utc);
 
   // Advances Running focus time and the Break countdown; may finish the
@@ -80,7 +91,8 @@ class Timer {
   MonoNs focused() const { return focused_; }
   MonoNs focus_target() const { return settings_.focus; }
 
-  // Time left on the focus session (Running / Paused) or on the break.
+  // Time left on the focus session (Running / Paused) or on the break
+  // (BreakReady: its full length).
   MonoNs remaining() const;
   bool on_long_break() const { return long_break_; }
 
@@ -98,7 +110,7 @@ class Timer {
  private:
   // Credits focus time up to `now` and finishes on target / max duration.
   void advance(MonoNs now, UnixSeconds now_utc);
-  void finish(FinishReason reason, MonoNs now, UnixSeconds now_utc);
+  void finish(FinishReason reason, UnixSeconds now_utc);
   // `at` / `at_utc`: when the break ended (start time of an auto-started session).
   void end_break(MonoNs at, UnixSeconds at_utc);
   MonoNs remaining_break() const;  // negative once overdue
@@ -115,7 +127,6 @@ class Timer {
   bool suspend_detected_ = false;
 
   std::optional<FinishedSession> finished_;
-  MonoNs finished_mono_ = 0;
 
   MonoNs break_start_ = 0;
   MonoNs break_elapsed_ = 0;

@@ -41,7 +41,8 @@ struct Fixture {
   bool pause() { return timer.pause(clock.mono, clock.utc()); }
   bool resume() { return timer.resume(clock.mono, clock.utc()); }
   bool stop() { return timer.stop(clock.mono, clock.utc()); }
-  bool acknowledge() { return timer.acknowledge(clock.mono, clock.utc()); }
+  bool acknowledge() { return timer.acknowledge(); }
+  bool start_break() { return timer.start_break(clock.mono); }
   bool skip_break() { return timer.skip_break(clock.mono, clock.utc()); }
   void tick() { timer.tick(clock.mono, clock.utc()); }
   // Advance in 250ms ticks, like the app's event loop.
@@ -52,11 +53,13 @@ struct Fixture {
       tick();
     }
   }
+  // Runs a full session and leaves the timer at BreakReady.
   void complete_one() {
     REQUIRE(start());
     run_for(50 * kMin);
     REQUIRE(timer.state() == TimerState::Finished);
     REQUIRE(acknowledge());
+    REQUIRE(timer.state() == TimerState::BreakReady);
   }
 };
 
@@ -69,6 +72,7 @@ TEST_CASE("start moves Idle to Running; invalid commands are rejected", "[timer]
   CHECK_FALSE(f.resume());
   CHECK_FALSE(f.stop());
   CHECK_FALSE(f.acknowledge());
+  CHECK_FALSE(f.start_break());
   CHECK_FALSE(f.skip_break());
 
   const UnixSeconds start_utc = f.clock.utc();
@@ -187,7 +191,7 @@ TEST_CASE("completed sessions are logged even if shorter than min_log_seconds", 
   CHECK(f.timer.finished()->session.duration_sec == 30);
 }
 
-TEST_CASE("after a session: break if completed, idle if not", "[timer]") {
+TEST_CASE("after a session: a break is due if completed, idle if not", "[timer]") {
   Fixture f;
   f.start();
 
@@ -198,39 +202,40 @@ TEST_CASE("after a session: break if completed, idle if not", "[timer]") {
     CHECK(f.timer.state() == TimerState::Idle);
     CHECK_FALSE(f.timer.finished());
   }
-  SECTION("completed -> short Break that counts down to Idle") {
+  SECTION("completed -> BreakReady waits for the user, then a short Break") {
     f.run_for(50 * kMin);
     CHECK(f.acknowledge());
-    CHECK(f.timer.state() == TimerState::Break);
+    CHECK(f.timer.state() == TimerState::BreakReady);
     CHECK_FALSE(f.timer.on_long_break());
     CHECK(f.timer.remaining() == 10 * kMin);
     CHECK_FALSE(f.stop());
     CHECK_FALSE(f.pause());
+    CHECK_FALSE(f.start());
 
+    f.run_for(20 * kMin);  // nobody clicked: still waiting
+    CHECK(f.timer.state() == TimerState::BreakReady);
+    CHECK(f.timer.remaining() == 10 * kMin);
+
+    CHECK(f.start_break());
+    CHECK(f.timer.state() == TimerState::Break);
+    CHECK_FALSE(f.start_break());
+    CHECK(f.timer.remaining() == 10 * kMin);
     f.run_for(4 * kMin);
     CHECK(f.timer.remaining() == 6 * kMin);
     f.run_for(6 * kMin);
     CHECK(f.timer.state() == TimerState::Idle);
   }
-  SECTION("skip_break goes straight to Idle") {
+  SECTION("skip_break goes straight to Idle, before or during the break") {
     f.run_for(50 * kMin);
     f.acknowledge();
-    f.run_for(kMin);
+    SECTION("before") {}
+    SECTION("during") {
+      f.start_break();
+      f.run_for(kMin);
+    }
     CHECK(f.skip_break());
     CHECK(f.timer.state() == TimerState::Idle);
     CHECK_FALSE(f.skip_break());
-  }
-  SECTION("the break is timed from the finish, not from acknowledge") {
-    f.run_for(50 * kMin);
-    f.clock.pass(4 * kMin);  // the app was slow to acknowledge
-    f.acknowledge();
-    CHECK(f.timer.remaining() == 6 * kMin);
-  }
-  SECTION("a break that is already over on acknowledge ends immediately") {
-    f.run_for(50 * kMin);
-    f.clock.pass(11 * kMin);
-    f.acknowledge();
-    CHECK(f.timer.state() == TimerState::Idle);
   }
 }
 
@@ -254,6 +259,7 @@ TEST_CASE("long break after every N completed sessions", "[timer]") {
   CHECK(f.timer.completed_in_cycle() == 4);
   CHECK(f.timer.on_long_break());
   CHECK(f.timer.remaining() == 30 * kMin);
+  f.start_break();
   f.run_for(30 * kMin);
   CHECK(f.timer.state() == TimerState::Idle);
   CHECK(f.timer.completed_in_cycle() == 0);
@@ -281,6 +287,8 @@ TEST_CASE("auto_start_next starts a new session when the break ends", "[timer]")
   f.complete_one();
 
   SECTION("break runs out") {
+    f.run_for(3 * kMin);  // the user starts the break a bit later
+    f.start_break();
     const UnixSeconds break_end_utc = f.clock.utc() + 10 * 60;
     f.clock.pass(10 * kMin + 2 * kSec);  // a late tick
     f.tick();
@@ -291,6 +299,7 @@ TEST_CASE("auto_start_next starts a new session when the break ends", "[timer]")
     CHECK(f.timer.focused() == 2 * kSec);  // credited from the break's end
   }
   SECTION("break skipped") {
+    f.start_break();
     f.run_for(kMin);
     const UnixSeconds now = f.clock.utc();
     CHECK(f.skip_break());

@@ -159,7 +159,10 @@ TEST_CASE("date helpers", "[time_util]") {
 
 TEST_CASE("format_duration", "[time_util]") {
   CHECK(format_duration(0) == "0m");
-  CHECK(format_duration(59) == "0m");
+  CHECK(format_duration(1) == "1s");
+  CHECK(format_duration(59) == "59s");
+  CHECK(format_duration(60) == "1m");
+  CHECK(format_duration(119) == "1m");
   CHECK(format_duration(45 * 60) == "45m");
   CHECK(format_duration(60 * 60) == "1h 0m");
   CHECK(format_duration(2 * 3600 + 15 * 60 + 59) == "2h 15m");

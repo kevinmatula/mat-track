@@ -65,11 +65,11 @@ bool Timer::stop(MonoNs now, UnixSeconds now_utc) {
   if (state_ != TimerState::Running && state_ != TimerState::Paused) return false;
   if (state_ == TimerState::Running) advance(now, now_utc);
   // advance() may already have finished the session at its target.
-  if (state_ != TimerState::Finished) finish(FinishReason::Stopped, now, now_utc);
+  if (state_ != TimerState::Finished) finish(FinishReason::Stopped, now_utc);
   return true;
 }
 
-bool Timer::acknowledge(MonoNs now, UnixSeconds now_utc) {
+bool Timer::acknowledge() {
   if (state_ != TimerState::Finished) return false;
   const bool completed = finished_->reason == FinishReason::Completed;
   finished_.reset();
@@ -77,16 +77,22 @@ bool Timer::acknowledge(MonoNs now, UnixSeconds now_utc) {
     state_ = TimerState::Idle;
     return true;
   }
-  state_ = TimerState::Break;
+  state_ = TimerState::BreakReady;
   long_break_ = completed_in_cycle_ >= settings_.long_break_every;
-  break_start_ = finished_mono_;
   break_elapsed_ = 0;
-  tick(now, now_utc);  // the break may already be over
+  return true;
+}
+
+bool Timer::start_break(MonoNs now) {
+  if (state_ != TimerState::BreakReady) return false;
+  state_ = TimerState::Break;
+  break_start_ = now;
+  break_elapsed_ = 0;
   return true;
 }
 
 bool Timer::skip_break(MonoNs now, UnixSeconds now_utc) {
-  if (state_ != TimerState::Break) return false;
+  if (state_ != TimerState::Break && state_ != TimerState::BreakReady) return false;
   end_break(now, now_utc);
   return true;
 }
@@ -107,6 +113,7 @@ MonoNs Timer::remaining() const {
     case TimerState::Paused:
       return std::max<MonoNs>(0, settings_.focus - focused_);
     case TimerState::Break:
+    case TimerState::BreakReady:
       return std::max<MonoNs>(0, remaining_break());
     default:
       return 0;
@@ -127,16 +134,15 @@ void Timer::advance(MonoNs now, UnixSeconds now_utc) {
     // Overshoot comes only from tick granularity; credit exactly the target.
     const MonoNs overshoot = focused_ - settings_.focus;
     focused_ = settings_.focus;
-    finish(FinishReason::Completed, now - overshoot, now_utc - overshoot / kNsPerSecond);
+    finish(FinishReason::Completed, now_utc - overshoot / kNsPerSecond);
   } else if (focused_ >= settings_.max_session) {
     focused_ = settings_.max_session;
-    finish(FinishReason::MaxDuration, now, now_utc);
+    finish(FinishReason::MaxDuration, now_utc);
   }
 }
 
-void Timer::finish(FinishReason reason, MonoNs now, UnixSeconds now_utc) {
+void Timer::finish(FinishReason reason, UnixSeconds now_utc) {
   state_ = TimerState::Finished;
-  finished_mono_ = now;
   if (reason == FinishReason::Completed) ++completed_in_cycle_;
 
   FinishedSession f;

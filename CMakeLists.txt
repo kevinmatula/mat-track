@@ -36,6 +36,8 @@ add_library(mat_track_core STATIC
   src/core/timer.cpp
   src/core/stats.cpp
   src/core/gamification.cpp
+  src/core/file_util.cpp
+  src/core/recovery.cpp
 )
 target_include_directories(mat_track_core PUBLIC src)
 target_link_libraries(mat_track_core PUBLIC SQLite::SQLite3)
@@ -56,14 +58,27 @@ if(MAT_TRACK_BUILD_APP)
     set(${out_var} ${out} PARENT_SCOPE)
   endfunction()
   mat_track_embed(font_src font_ttf ${CMAKE_CURRENT_SOURCE_DIR}/assets/font.ttf)
+  mat_track_embed(chime_src chime_wav ${CMAKE_CURRENT_SOURCE_DIR}/assets/chime.wav)
+  mat_track_embed(break_end_src break_end_wav ${CMAKE_CURRENT_SOURCE_DIR}/assets/break_end.wav)
 
   add_executable(mat-track
     src/app/main.cpp
     src/app/app.cpp
     src/app/theme.cpp
+    src/app/audio.cpp
+    src/app/ui_timer.cpp
+    src/app/window_util.cpp
     ${font_src}
+    ${chime_src}
+    ${break_end_src}
   )
   target_link_libraries(mat-track PRIVATE mat_track_core imgui SDL3::SDL3)
+  # Used to bring the window to the front past focus-stealing prevention.
+  find_package(X11)
+  if(X11_FOUND)
+    target_link_libraries(mat-track PRIVATE X11::X11)
+    target_compile_definitions(mat-track PRIVATE MAT_TRACK_HAVE_X11)
+  endif()
   mat_track_warnings(mat-track)
 endif()
 

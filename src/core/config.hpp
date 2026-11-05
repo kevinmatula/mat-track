@@ -28,6 +28,7 @@ struct Config {
   int streak_min_minutes = 30;
 
   bool sound_enabled = true;
+  bool raise_on_alarm = true;
   bool invert_colors = false;
 
   bool operator==(const Config&) const = default;

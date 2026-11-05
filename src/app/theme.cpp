@@ -145,7 +145,7 @@ void apply_theme(bool invert, float display_scale) {
   style.WindowBorderSize = 1;
   style.ChildBorderSize = 1;
   style.PopupBorderSize = 1;
-  style.FrameBorderSize = 1;
+  style.FrameBorderSize = 0;  // frames get drawn bevels instead
   style.TabBorderSize = 1;
 
   style.FontSizeBase = kBaseFontSize;
@@ -269,7 +269,7 @@ bool button(const char* label, ImVec2 size, bool enabled, bool is_default) {
 
 void begin_group(const char* caption, float width) {
   const ImVec2 start = snap(ImGui::GetCursorScreenPos());
-  if (width <= 0) width = ImGui::GetContentRegionAvail().x;
+  if (width <= 0) width = avail_width();
   g_groups.push_back({start, std::floor(width), caption});
 
   const ImGuiStyle& style = ImGui::GetStyle();
@@ -278,6 +278,13 @@ void begin_group(const char* caption, float width) {
   ImGui::Indent(style.WindowPadding.x);
   ImGui::BeginGroup();
   ImGui::PushItemWidth(width - 2 * style.WindowPadding.x);
+}
+
+float avail_width() {
+  if (g_groups.empty()) return ImGui::GetContentRegionAvail().x;
+  const Group& grp = g_groups.back();
+  const float inner_right = grp.start.x + grp.width - ImGui::GetStyle().WindowPadding.x;
+  return std::max(0.0f, inner_right - ImGui::GetCursorScreenPos().x);
 }
 
 void end_group() {
@@ -307,6 +314,78 @@ void end_group() {
                     p.face);
   dl->AddText(pos, p.text, grp.caption, end);
 }
+
+bool begin_combo(const char* label, const char* preview, bool enabled) {
+  const Palette& p = palette();
+  // BeginCombo switches to the popup window when it opens, so anything
+  // pushed here must be popped in the window it was pushed in: the disabled
+  // state right after BeginCombo (a disabled combo never opens), the popup
+  // color only after EndCombo.
+  if (!enabled) ImGui::BeginDisabled();
+  // The drop-down list is a white field, unlike dialogs.
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, g4(p.field));
+  const bool open = ImGui::BeginCombo(label, preview);
+  if (!enabled) ImGui::EndDisabled();
+  if (!open) ImGui::PopStyleColor();
+
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 min = ImGui::GetItemRectMin();
+  const ImVec2 fmax = ImGui::GetItemRectMax();
+  draw_bevel(dl, min, fmax, Bevel::Sunken);
+  // Raised arrow button inside the right end of the field.
+  const float h = fmax.y - min.y;
+  draw_bevel(dl, {fmax.x - h, min.y + 2 * g_px}, {fmax.x - 2 * g_px, fmax.y - 2 * g_px},
+             open ? Bevel::Pressed : Bevel::Raised);
+  return open;
+}
+
+void end_combo() {
+  ImGui::EndCombo();
+  ImGui::PopStyleColor();  // pushed by begin_combo
+}
+
+bool input_text(const char* label, char* buf, std::size_t size, float width) {
+  if (width > 0) ImGui::SetNextItemWidth(width);
+  const bool enter =
+      ImGui::InputText(label, buf, size, ImGuiInputTextFlags_EnterReturnsTrue);
+  draw_bevel(ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+             Bevel::Sunken);
+  return enter;
+}
+
+bool begin_dialog(const char* title) {
+  const ImGuiViewport* vp = ImGui::GetMainViewport();
+  ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, {0.5f, 0.5f});
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  const bool open = ImGui::BeginPopupModal(
+      title, nullptr,
+      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize |
+          ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+  ImGui::PopStyleVar();
+  if (!open) return false;
+
+  const Palette& p = palette();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 wmin = ImGui::GetWindowPos();
+  const ImVec2 wmax = {wmin.x + ImGui::GetWindowWidth(), wmin.y + ImGui::GetWindowHeight()};
+  draw_bevel(dl, wmin, wmax, Bevel::Raised);
+
+  // Title bar: black strip with white caption, inset by the bevel.
+  const char* end = label_end(title);
+  const float bar_h = ImGui::GetTextLineHeight() + 6 * g_px;
+  const ImVec2 bmin = {wmin.x + 3 * g_px, wmin.y + 3 * g_px};
+  const ImVec2 bmax = {wmax.x - 3 * g_px, bmin.y + bar_h};
+  dl->AddRectFilled(snap(bmin), snap(bmax), p.well);
+  dl->AddText({bmin.x + 6 * g_px, bmin.y + 3 * g_px}, p.well_text, title, end);
+
+  // Reserve the bar's height, and enough width for the caption.
+  const ImVec2 cursor = ImGui::GetCursorScreenPos();
+  ImGui::SetCursorScreenPos({cursor.x, bmax.y});
+  ImGui::Dummy({ImGui::CalcTextSize(title, end).x + 48 * g_px, ImGui::GetStyle().ItemSpacing.y});
+  return true;
+}
+
+void end_dialog() { ImGui::EndPopup(); }
 
 void lcd_readout(const char* text, ImVec2 size) {
   push_timer_font();
