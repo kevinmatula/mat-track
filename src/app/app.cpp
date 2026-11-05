@@ -216,27 +216,23 @@ void App::draw_frame() {
 
   // Placeholder content for the app shell; replaced by the real panels in
   // later milestones.
-  ImGui::TextUnformatted("mat-track");
-  ImGui::SameLine();
-  ImGui::TextDisabled("app shell");
-  ImGui::Separator();
-
   const int total = static_cast<int>(std::lround(config_.focus_minutes * 60));
   char digits[16];
   std::snprintf(digits, sizeof digits, "%02d:%02d", total / 60, total % 60);
-  ui::push_timer_font();
-  ImGui::TextUnformatted(digits);
-  ui::pop_font();
 
+  ui::begin_group("Timer", 420 * ui_scale_);
+  ui::lcd_readout(digits);
   ui::button("Start");
   ImGui::SameLine();
   ui::button("Pause", {}, false);
   ImGui::SameLine();
   ui::button("Stop", {}, false);
+  ui::end_group();
 
-  ImGui::Spacing();
-  ImGui::TextDisabled("data: %s", data_dir_.string().c_str());
-  ImGui::TextDisabled("scale %.2f  %s", ui_scale_, ui::inverted() ? "inverted" : "normal");
+  char scale[32];
+  std::snprintf(scale, sizeof scale, "scale %.2f", ui_scale_);
+  const std::string data = "data: " + data_dir_.string();
+  ui::status_bar({"Ready", scale, data.c_str()});
 
   ImGui::End();
   ImGui::Render();
@@ -245,8 +241,8 @@ void App::draw_frame() {
 void App::render() {
   const ImGuiIO& io = ImGui::GetIO();
   SDL_SetRenderScale(renderer_, io.DisplayFramebufferScale.x, io.DisplayFramebufferScale.y);
-  const float v = ui::inverted() ? 1.0f : 0.0f;
-  SDL_SetRenderDrawColorFloat(renderer_, v, v, v, 1.0f);
+  const ImVec4 face = ImGui::ColorConvertU32ToFloat4(ui::palette().face);
+  SDL_SetRenderDrawColorFloat(renderer_, face.x, face.y, face.z, 1.0f);
   SDL_RenderClear(renderer_);
   ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer_);
   SDL_RenderPresent(renderer_);
