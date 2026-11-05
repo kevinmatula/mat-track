@@ -202,13 +202,55 @@ void draw_day_row(const Well& w, Date first, int count, float gap, LabelFn label
   if (small_labels) ui::pop_font();
 }
 
+// Three stacked rows of larger cells: days 1-10, 11-20 and 21-end, each
+// labelled on the left like the year's weekday labels.
 void draw_month(const Well& w, DateSpan month) {
+  const float s = w.s;
   const int days =
       static_cast<int>((chr::sys_days{month.last} - chr::sys_days{month.first}).count()) + 1;
-  draw_day_row(
-      w, month.first, days, 3 * w.s,
-      [](Date d) { return std::to_string(static_cast<unsigned>(d.day())); },
-      /*small_labels=*/true);
+  constexpr int kRows = 3;
+  constexpr int kPerRow = 10;
+  // The last row takes the rest (8-11 days). Size and center for the
+  // longest possible row so the block stays put from month to month.
+  constexpr int kWidest = 11;
+
+  const float gap = 4 * s;
+  const float label_w = ImGui::CalcTextSize("21-31").x + 12 * s;
+  const float avail_w = w.max.x - w.min.x;
+  // Leave breathing room above and below so the rows don't crowd the
+  // well's border (the year view has its month labels there).
+  const float margin_y = 10 * s;
+  const float cell = std::floor(
+      std::min({kMaxRowCell * s, (w.max.y - w.min.y - 2 * margin_y - (kRows - 1) * gap) / kRows,
+                (avail_w - label_w - (kWidest - 1) * gap) / kWidest}));
+  const float step = cell + gap;
+  const float block_w = label_w + kWidest * step - gap;
+  const float block_h = kRows * step - gap;
+  const float x0 = std::floor(w.min.x + (avail_w - block_w) * 0.5f + label_w);
+  const float y0 = std::floor(w.min.y + (w.max.y - w.min.y - block_h) * 0.5f);
+
+  for (int row = 0; row < kRows; ++row) {
+    const int first = row * kPerRow + 1;
+    const int last = row == kRows - 1 ? days : first + kPerRow - 1;
+    const std::string label = std::to_string(first) + "-" + std::to_string(last);
+    const float y = y0 + row * step;
+    w.dl->AddText({x0 - label_w, std::floor(y + (cell - w.line_h) * 0.5f)}, kLabel,
+                  label.c_str());
+
+    for (int day = first; day <= last; ++day) {
+      const Date d = add_days(month.first, day - 1);
+      const ImVec2 a = {x0 + (day - first) * step, y};
+      const ImVec2 b = {a.x + cell, a.y + cell};
+      if (d > w.today) {
+        draw_future_cell(w.dl, a, b);
+        continue;
+      }
+      const int level = w.level(d);
+      draw_cell(w.dl, a, b, level);
+      if (d == w.today) draw_today_ring(w.dl, a, b, level, s);
+      w.hover(d, a, b);
+    }
+  }
 }
 
 void draw_week(const Well& w, DateSpan week) {
