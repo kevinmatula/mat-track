@@ -33,6 +33,7 @@ add_library(mat_track_core STATIC
   src/core/time_util.cpp
   src/core/db.cpp
   src/core/config.cpp
+  src/core/timer.cpp
 )
 target_include_directories(mat_track_core PUBLIC src)
 target_link_libraries(mat_track_core PUBLIC SQLite::SQLite3)
