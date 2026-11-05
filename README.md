@@ -3,9 +3,9 @@
 A minimal, local-only, black-and-white study tracker for Linux: pomodoro
 timer, a GitHub-style heatmap of study history, and light gamification.
 
-> Work in progress. Milestone 1 (core foundation) is done: build system,
-> time/rollover utilities and the SQLite layer, with unit tests. There is
-> no app binary yet.
+> Work in progress. The core (rollover-aware time handling, SQLite storage,
+> timer state machine, stats, gamification, config) is done and tested; the
+> app currently opens an empty black-and-white shell window.
 
 ## Build dependencies (Linux Mint 22 / Ubuntu 24.04)
 
@@ -40,3 +40,18 @@ CMake options:
 | `MAT_TRACK_SANITIZE` | `OFF` | Build with `-fsanitize=address,undefined` (use with `Debug`) |
 
 For a fast core-only loop: `-DMAT_TRACK_BUILD_APP=OFF`.
+
+## Run
+
+```sh
+./build/mat-track                        # data in ~/.local/share/mat-track/
+./build/mat-track --data-dir /tmp/mt     # separate data dir for testing
+```
+
+The data directory holds `mat-track.db` (SQLite) and `config.toml`, which is
+written with defaults on first run.
+
+## Licenses
+
+The bundled font is IBM Plex Mono, under the SIL Open Font License 1.1
+(`assets/font-LICENSE.txt`).

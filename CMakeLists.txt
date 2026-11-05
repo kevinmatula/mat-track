@@ -41,6 +41,32 @@ target_include_directories(mat_track_core PUBLIC src)
 target_link_libraries(mat_track_core PUBLIC SQLite::SQLite3)
 mat_track_warnings(mat_track_core)
 
+# ---- app ----------------------------------------------------------------------
+if(MAT_TRACK_BUILD_APP)
+  # Assets are compiled into the binary so it runs from anywhere.
+  function(mat_track_embed out_var name file)
+    set(out ${CMAKE_CURRENT_BINARY_DIR}/embedded/${name}.cpp)
+    add_custom_command(
+      OUTPUT ${out}
+      COMMAND ${CMAKE_COMMAND} -DIN=${file} -DOUT=${out} -DNAME=${name}
+              -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFile.cmake
+      DEPENDS ${file} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedFile.cmake
+      COMMENT "Embedding ${name}"
+      VERBATIM)
+    set(${out_var} ${out} PARENT_SCOPE)
+  endfunction()
+  mat_track_embed(font_src font_ttf ${CMAKE_CURRENT_SOURCE_DIR}/assets/font.ttf)
+
+  add_executable(mat-track
+    src/app/main.cpp
+    src/app/app.cpp
+    src/app/theme.cpp
+    ${font_src}
+  )
+  target_link_libraries(mat-track PRIVATE mat_track_core imgui SDL3::SDL3)
+  mat_track_warnings(mat-track)
+endif()
+
 # ---- tests ------------------------------------------------------------------
 if(MAT_TRACK_BUILD_TESTS)
   enable_testing()
