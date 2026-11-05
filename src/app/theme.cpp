@@ -21,6 +21,8 @@ ImVec4 g4(ImU32 c) { return ImGui::ColorConvertU32ToFloat4(c); }
 // Classic Windows 9x system grays (C0C0C0 face, DFDFDF / 808080 bevels).
 const Palette kLight = {
     .face = g(0.753f),
+    .button = g(0.831f),
+    .button_hot = g(0.863f),
     .highlight = g(1.0f),
     .light = g(0.875f),
     .shadow = g(0.502f),
@@ -35,6 +37,8 @@ const Palette kLight = {
 // Inverted: the same bevel logic on a dark face.
 const Palette kDark = {
     .face = g(0.20f),
+    .button = g(0.26f),
+    .button_hot = g(0.30f),
     .highlight = g(0.55f),
     .light = g(0.33f),
     .shadow = g(0.10f),
@@ -165,8 +169,8 @@ void apply_theme(bool invert, float display_scale) {
   c[ImGuiCol_FrameBgActive] = g4(p.field);
 
   // Stock ImGui buttons (rarely used; ui::button() draws the real thing).
-  c[ImGuiCol_Button] = g4(p.face);
-  c[ImGuiCol_ButtonHovered] = g4(p.light);
+  c[ImGuiCol_Button] = g4(p.button);
+  c[ImGuiCol_ButtonHovered] = g4(p.button_hot);
   c[ImGuiCol_ButtonActive] = g4(p.shadow);
 
   // Selection in lists/combos: a mid gray band that keeps the text readable.
@@ -218,7 +222,7 @@ void draw_bevel(ImDrawList* dl, ImVec2 min, ImVec2 max, Bevel style) {
   }
 }
 
-bool button(const char* label, ImVec2 size, bool enabled) {
+bool button(const char* label, ImVec2 size, bool enabled, bool is_default) {
   const char* end = label_end(label);
   const ImVec2 text = ImGui::CalcTextSize(label, end);
   const ImGuiStyle& style = ImGui::GetStyle();
@@ -237,8 +241,15 @@ bool button(const char* label, ImVec2 size, bool enabled) {
 
   const Palette& p = palette();
   ImDrawList* dl = ImGui::GetWindowDrawList();
-  dl->AddRectFilled(min, max, p.face);
-  draw_bevel(dl, min, max, held ? Bevel::Pressed : Bevel::Raised);
+  ImVec2 bmin = min;
+  ImVec2 bmax = max;
+  if (is_default && enabled) {
+    ring(dl, min, max, p.dark_shadow, p.dark_shadow);
+    bmin = {min.x + g_px, min.y + g_px};
+    bmax = {max.x - g_px, max.y - g_px};
+  }
+  dl->AddRectFilled(bmin, bmax, hovered ? p.button_hot : p.button);
+  draw_bevel(dl, bmin, bmax, held ? Bevel::Pressed : Bevel::Raised);
 
   const float shift = held ? g_px : 0.0f;
   const ImVec2 pos = snap({min.x + (size.x - text.x) * 0.5f + shift,

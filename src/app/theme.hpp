@@ -14,7 +14,9 @@ constexpr float kBaseFontSize = 16.0f;
 constexpr float kTimerFontSize = 96.0f;
 
 struct Palette {
-  ImU32 face;           // window / button surface
+  ImU32 face;           // window surface
+  ImU32 button;         // button surface (a touch lighter than the face)
+  ImU32 button_hot;     // button surface under the mouse
   ImU32 highlight;      // outer top-left edge of raised things
   ImU32 light;          // inner top-left edge
   ImU32 shadow;         // inner bottom-right edge
@@ -48,9 +50,11 @@ enum class Bevel {
 };
 void draw_bevel(ImDrawList* dl, ImVec2 min, ImVec2 max, Bevel style);
 
-// Raised push button; sinks while held. Hover draws the dotted focus
-// rectangle. Disabled buttons show embossed gray text.
-bool button(const char* label, ImVec2 size = {0, 0}, bool enabled = true);
+// Raised push button; sinks while held. Hover lightens it and draws the
+// dotted focus rectangle. Disabled buttons show embossed gray text.
+// `is_default` adds the black outline Win9x used for a dialog's main action.
+bool button(const char* label, ImVec2 size = {0, 0}, bool enabled = true,
+            bool is_default = false);
 
 // Group box: an etched frame with a caption set into the top edge.
 // width <= 0 fills the available width.

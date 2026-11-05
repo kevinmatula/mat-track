@@ -222,7 +222,7 @@ void App::draw_frame() {
 
   ui::begin_group("Timer", 420 * ui_scale_);
   ui::lcd_readout(digits);
-  ui::button("Start");
+  ui::button("Start", {}, true, /*is_default=*/true);
   ImGui::SameLine();
   ui::button("Pause", {}, false);
   ImGui::SameLine();
