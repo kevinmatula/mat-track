@@ -34,6 +34,8 @@ add_library(mat_track_core STATIC
   src/core/db.cpp
   src/core/config.cpp
   src/core/timer.cpp
+  src/core/stats.cpp
+  src/core/gamification.cpp
 )
 target_include_directories(mat_track_core PUBLIC src)
 target_link_libraries(mat_track_core PUBLIC SQLite::SQLite3)

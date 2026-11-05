@@ -156,3 +156,12 @@ TEST_CASE("date helpers", "[time_util]") {
   CHECK(add_days(ymd(2024, 12, 31), 1) == ymd(2025, 1, 1));
   CHECK(add_days(ymd(2024, 3, 1), -1) == ymd(2024, 2, 29));
 }
+
+TEST_CASE("format_duration", "[time_util]") {
+  CHECK(format_duration(0) == "0m");
+  CHECK(format_duration(59) == "0m");
+  CHECK(format_duration(45 * 60) == "45m");
+  CHECK(format_duration(60 * 60) == "1h 0m");
+  CHECK(format_duration(2 * 3600 + 15 * 60 + 59) == "2h 15m");
+  CHECK(format_duration(-5) == "0m");
+}

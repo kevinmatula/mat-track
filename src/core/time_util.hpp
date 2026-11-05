@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -40,6 +41,9 @@ Date day_key(UnixSeconds utc, const std::chrono::time_zone& tz, int rollover_hou
 UtcRange day_utc_range(Date day, const std::chrono::time_zone& tz, int rollover_hour);
 
 Date add_days(Date d, int days);
+
+// "2h 15m", "45m", "0m". Seconds are truncated.
+std::string format_duration(std::int64_t seconds);
 
 // "YYYY-MM-DD"
 std::string format_date(Date d);

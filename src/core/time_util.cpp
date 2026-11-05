@@ -1,5 +1,6 @@
 #include "core/time_util.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <cstdio>
 #include <stdexcept>
@@ -39,6 +40,13 @@ UtcRange day_utc_range(Date day, const chr::time_zone& tz, int rollover_hour) {
 
 Date add_days(Date d, int days) {
   return Date{chr::sys_days{d} + chr::days{days}};
+}
+
+std::string format_duration(std::int64_t seconds) {
+  const std::int64_t minutes = std::max<std::int64_t>(0, seconds) / 60;
+  const std::int64_t h = minutes / 60;
+  const std::int64_t m = minutes % 60;
+  return h > 0 ? std::to_string(h) + "h " + std::to_string(m) + "m" : std::to_string(m) + "m";
 }
 
 std::string format_date(Date d) {
