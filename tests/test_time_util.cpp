@@ -168,3 +168,13 @@ TEST_CASE("format_duration", "[time_util]") {
   CHECK(format_duration(2 * 3600 + 15 * 60 + 59) == "2h 15m");
   CHECK(format_duration(-5) == "0m");
 }
+
+TEST_CASE("format_clock gives local HH:MM", "[time_util]") {
+  CHECK(format_clock(1718509800, ny()) == "23:50");  // 2024-06-15 23:50 EDT
+  CHECK(format_clock(1718511600, ny()) == "00:20");
+  CHECK(format_clock(1718524799, ny()) == "03:59");  // seconds truncated
+  // Across fall-back: both 01:30s read 01:30.
+  CHECK(format_clock(1730611800, ny()) == "01:30");
+  CHECK(format_clock(1730615400, ny()) == "01:30");
+  CHECK(format_clock(0, *locate_zone("UTC")) == "00:00");
+}

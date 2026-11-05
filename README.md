@@ -6,8 +6,10 @@ timer, a GitHub-style heatmap of study history, and light gamification.
 > Work in progress. The core (rollover-aware time handling, SQLite storage,
 > timer state machine, stats, gamification, config) is done and tested. The
 > app has a working pomodoro timer that logs sessions, and a history panel
-> with year, month and week heatmaps (per-day tooltips, period totals); the
-> day panel, category filter and gamification UI are still to come.
+> with year, month and week heatmaps (per-day tooltips, period totals). Click
+> a day to see and edit its sessions; filter the history by category; manage
+> categories from the timer's Edit... button. The gamification header and
+> polish are still to come.
 
 ## Build dependencies (Linux Mint 22 / Ubuntu 24.04)
 

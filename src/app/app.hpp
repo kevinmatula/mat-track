@@ -101,6 +101,17 @@ class App {
   void draw_heatmap_panel();
   void draw_history_toolbar();
   void draw_day_tooltip(Date day);
+  // ---- panels (ui_day_panel.cpp) ----
+  void draw_day_panel(float width, float height);
+  void draw_session_dialog();
+  // ---- panels (ui_categories.cpp) ----
+  void draw_categories_dialog();
+
+  // Re-derives day_totals_ from sessions_ for the current filter.
+  void apply_filter();
+  // Sessions of one study day, oldest first, honouring the filter.
+  std::vector<Session> sessions_on(Date day) const;
+  const char* category_name(std::int64_t id) const;
 
   AppOptions options_;
   std::filesystem::path data_dir_;
@@ -124,8 +135,28 @@ class App {
   Timer timer_{TimerSettings{}};
   std::vector<Category> categories_;  // non-archived, for the dropdown
   // History, recomputed by reload_history().
-  DayTotals day_totals_;
+  std::vector<Session> sessions_;           // every session, oldest first
+  std::vector<Category> all_categories_;    // including archived, by name
   std::map<std::int64_t, std::string> category_names_;  // includes archived
+  DayTotals day_totals_;                    // for the current filter
+  // History filter: one category, or all of them.
+  CategoryFilter filter_;
+  // Day shown in the day panel (clicked in the History panel).
+  std::optional<Date> selected_day_;
+  float timer_panel_h_ = 0;  // last frame's, so the day panel can match it
+
+  // "Edit session" dialog.
+  bool open_session_dialog_ = false;
+  std::optional<Session> editing_;
+  std::int64_t edit_category_ = 0;
+  std::array<char, 256> edit_note_{};
+  bool confirm_delete_ = false;
+
+  // "Categories" dialog.
+  bool open_categories_dialog_ = false;
+  std::optional<std::int64_t> cat_selected_;
+  std::array<char, 64> cat_name_{};
+  std::string cat_message_;
 
   // History panel: which view, and how many weeks/months back it shows.
   enum class HistoryView { Year, Month, Week };

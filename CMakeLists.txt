@@ -70,6 +70,8 @@ if(MAT_TRACK_BUILD_APP)
     src/app/audio.cpp
     src/app/ui_timer.cpp
     src/app/ui_heatmap.cpp
+    src/app/ui_day_panel.cpp
+    src/app/ui_categories.cpp
     src/app/window_util.cpp
     ${font_src}
     ${chime_src}

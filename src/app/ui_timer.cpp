@@ -71,7 +71,8 @@ void App::draw_timer_panel() {
   ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted("Category");
   ImGui::SameLine();
-  ImGui::SetNextItemWidth(ui::avail_width());
+  const float edit_w = 75.0f * ui::px();
+  ImGui::SetNextItemWidth(ui::avail_width() - edit_w - ImGui::GetStyle().ItemSpacing.x);
   if (ui::begin_combo("##category", preview, !active)) {
     for (const auto& c : categories_) {
       const bool selected = c.id == selected_category_;
@@ -80,6 +81,8 @@ void App::draw_timer_panel() {
     }
     ui::end_combo();
   }
+  ImGui::SameLine();
+  if (ui::button("Edit...##categories", {edit_w, 0})) open_categories_dialog_ = true;
 
   ImGui::Spacing();
   switch (st) {

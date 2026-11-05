@@ -56,9 +56,19 @@ float g_px = 1.0f;
 struct Group {
   ImVec2 start;
   float width;
+  float min_height;
   const char* caption;
 };
 std::vector<Group> g_groups;
+
+// The open list view's column layout and outer rectangle.
+struct List {
+  std::vector<float> x;  // column starts, relative to the row
+  std::vector<float> w;
+  ImVec2 min;
+  float header_h;
+};
+List g_list;
 
 const char* label_end(const char* label) {
   const char* hashes = std::strstr(label, "##");
@@ -291,10 +301,11 @@ bool toggle_button(const char* label, bool active, ImVec2 size) {
   return clicked;
 }
 
-void begin_group(const char* caption, float width) {
+void begin_group(const char* caption, float width, float min_height) {
   const ImVec2 start = snap(ImGui::GetCursorScreenPos());
   if (width <= 0) width = avail_width();
-  g_groups.push_back({start, std::floor(width), caption});
+  g_groups.push_back({start, std::floor(width), min_height, caption});
+  ImGui::BeginGroup();  // the whole box, so SameLine() works after it
 
   const ImGuiStyle& style = ImGui::GetStyle();
   // Leave room for the caption line, then indent the contents.
@@ -320,9 +331,11 @@ void end_group() {
   ImGui::EndGroup();
   const ImGuiStyle& style = ImGui::GetStyle();
   ImGui::Unindent(style.WindowPadding.x);
-  const float bottom = std::floor(ImGui::GetItemRectMax().y + style.WindowPadding.y);
+  const float bottom = std::floor(std::max(ImGui::GetItemRectMax().y + style.WindowPadding.y,
+                                           grp.start.y + grp.min_height));
   ImGui::SetCursorScreenPos({grp.start.x, bottom});
   ImGui::Dummy({grp.width, style.ItemSpacing.y * 0.5f});
+  ImGui::EndGroup();
 
   const Palette& p = palette();
   ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -375,6 +388,87 @@ bool input_text(const char* label, char* buf, std::size_t size, float width) {
   draw_bevel(ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
              Bevel::Sunken);
   return enter;
+}
+
+void begin_list(const char* id, std::initializer_list<ListColumn> columns, ImVec2 size) {
+  const Palette& p = palette();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImGuiStyle& style = ImGui::GetStyle();
+  const ImVec2 min = snap(ImGui::GetCursorScreenPos());
+  const float inner_w = size.x - 4 * g_px;  // inside the sunken bevel
+
+  // Column layout: fixed widths first, the rest shared by stretch columns.
+  float fixed = 0;
+  int stretch = 0;
+  for (const auto& c : columns) {
+    if (c.width > 0) fixed += c.width;
+    else ++stretch;
+  }
+  const float scrollbar = style.ScrollbarSize;
+  const float share = stretch ? std::max(0.0f, inner_w - scrollbar - fixed) / stretch : 0;
+  g_list.x.clear();
+  g_list.w.clear();
+  float x = 0;
+  for (const auto& c : columns) {
+    g_list.x.push_back(x);
+    g_list.w.push_back(c.width > 0 ? c.width : share);
+    x += g_list.w.back();
+  }
+
+  // Raised header cells inside the top of the field.
+  const float header_h = ImGui::GetTextLineHeight() + 6 * g_px;
+  g_list.min = min;
+  g_list.header_h = header_h;
+  const float hx = min.x + 2 * g_px;
+  const float hy = min.y + 2 * g_px;
+  std::size_t i = 0;
+  for (const auto& c : columns) {
+    const float cx = std::floor(hx + g_list.x[i]);
+    float cw = std::floor(g_list.w[i]);
+    if (i + 1 == columns.size()) cw = std::floor(min.x + size.x - 2 * g_px - cx);  // to the edge
+    dl->AddRectFilled({cx, hy}, {cx + cw, hy + header_h}, p.face);
+    draw_bevel(dl, {cx, hy}, {cx + cw, hy + header_h}, Bevel::Raised);
+    dl->AddText({cx + 6 * g_px, hy + 3 * g_px}, p.text, c.title);
+    ++i;
+  }
+
+  ImGui::SetCursorScreenPos({min.x + 2 * g_px, hy + header_h});
+  ImGui::PushStyleColor(ImGuiCol_ChildBg, g4(p.field));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0, 2 * g_px});
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {style.ItemSpacing.x, 2 * g_px});
+  ImGui::BeginChild(id, {inner_w, size.y - header_h - 4 * g_px}, ImGuiChildFlags_None);
+}
+
+float list_column_x(int column) { return g_list.x[static_cast<std::size_t>(column)]; }
+float list_column_width(int column) { return g_list.w[static_cast<std::size_t>(column)]; }
+
+void end_list() {
+  ImGui::EndChild();
+  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor();
+  const ImVec2 max = {ImGui::GetItemRectMax().x + 2 * g_px, ImGui::GetItemRectMax().y + 2 * g_px};
+  draw_bevel(ImGui::GetWindowDrawList(), g_list.min, max, Bevel::Sunken);
+  ImGui::SetCursorScreenPos({g_list.min.x, max.y});
+  ImGui::Dummy({max.x - g_list.min.x, 0});
+}
+
+void check_mark(bool checked) {
+  const Palette& p = palette();
+  const float size = std::floor(ImGui::GetTextLineHeight() * 0.8f);
+  const ImVec2 pos = ImGui::GetCursorScreenPos();
+  const ImVec2 a = snap({pos.x, pos.y + (ImGui::GetTextLineHeight() - size) * 0.5f});
+  const ImVec2 b = {a.x + size, a.y + size};
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->AddRectFilled(a, b, p.field);
+  draw_bevel(dl, a, b, Bevel::Sunken);
+  if (checked) {
+    // The classic 3-pixel-thick check, drawn as two strokes.
+    const float u = size / 12.0f;
+    const ImVec2 pts[3] = {{a.x + 3 * u, a.y + 6 * u}, {a.x + 5 * u, a.y + 8.5f * u},
+                           {a.x + 9.5f * u, a.y + 3.5f * u}};
+    dl->AddPolyline(pts, 3, p.text, 2 * g_px, ImDrawFlags_None);
+  }
+  ImGui::Dummy({size, ImGui::GetTextLineHeight()});
 }
 
 bool begin_dialog(const char* title) {

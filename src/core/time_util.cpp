@@ -51,6 +51,16 @@ std::string format_duration(std::int64_t seconds) {
   return h > 0 ? std::to_string(h) + "h " + std::to_string(m) + "m" : std::to_string(m) + "m";
 }
 
+std::string format_clock(UnixSeconds utc, const chr::time_zone& tz) {
+  const chr::local_seconds local = tz.to_local(chr::sys_seconds{chr::seconds{utc}});
+  const auto since_midnight = local - chr::floor<chr::days>(local);
+  const auto h = chr::duration_cast<chr::hours>(since_midnight).count();
+  const auto m = chr::duration_cast<chr::minutes>(since_midnight).count() % 60;
+  char buf[8];
+  std::snprintf(buf, sizeof buf, "%02d:%02d", static_cast<int>(h), static_cast<int>(m));
+  return buf;
+}
+
 std::string format_date(Date d) {
   char buf[16];
   std::snprintf(buf, sizeof buf, "%04d-%02u-%02u", static_cast<int>(d.year()),

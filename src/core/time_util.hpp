@@ -45,6 +45,9 @@ Date add_days(Date d, int days);
 // "2h 15m", "45m", "30s", "0m". Seconds are truncated once past a minute.
 std::string format_duration(std::int64_t seconds);
 
+// Local wall-clock time of a moment, "HH:MM" (24-hour).
+std::string format_clock(UnixSeconds utc, const std::chrono::time_zone& tz);
+
 // "YYYY-MM-DD"
 std::string format_date(Date d);
 std::optional<Date> parse_date(std::string_view s);

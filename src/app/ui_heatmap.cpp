@@ -12,7 +12,6 @@
 
 #include "app/app.hpp"
 #include "app/theme.hpp"
-#include "core/gamification.hpp"
 #include "core/heatmap.hpp"
 #include "core/time_util.hpp"
 
@@ -40,8 +39,6 @@ constexpr std::array<const char*, 12> kMonths = {"Jan", "Feb", "Mar", "Apr", "Ma
 constexpr std::array<const char*, 12> kMonthNames = {
     "January", "February", "March",     "April",   "May",      "June",
     "July",    "August",   "September", "October", "November", "December"};
-constexpr std::array<const char*, 7> kWeekdays = {"Sunday",   "Monday", "Tuesday", "Wednesday",
-                                                  "Thursday", "Friday", "Saturday"};
 constexpr std::array<const char*, 7> kWeekdaysShort = {"Sun", "Mon", "Tue", "Wed",
                                                        "Thu", "Fri", "Sat"};
 
@@ -69,6 +66,14 @@ void draw_cell(ImDrawList* dl, ImVec2 a, ImVec2 b, int level) {
 
 // A ring just outside a cell, plus an inner black ring so it still reads on
 // a white (goal met) cell.
+// The selected day (shown in the day panel): a thicker ring filling the gap
+// around the cell, clearly different from today's thin one.
+void draw_selected_ring(ImDrawList* dl, ImVec2 a, ImVec2 b, float s) {
+  dl->AddRect({a.x - 2 * s, a.y - 2 * s}, {b.x + 2 * s, b.y + 2 * s}, kBright, 0.0f, 2 * s);
+  // A black edge just inside, so the ring reads on a white cell too.
+  dl->AddRect(a, b, IM_COL32_BLACK, 0.0f, s);
+}
+
 void draw_today_ring(ImDrawList* dl, ImVec2 a, ImVec2 b, int level, float s) {
   dl->AddRect({a.x - s, a.y - s}, {b.x + s, b.y + s}, kBright, 0.0f, s);
   if (level == 4) dl->AddRect({a.x + s, a.y + s}, {b.x - s, b.y - s}, IM_COL32_BLACK, 0.0f, s);
@@ -87,6 +92,7 @@ struct Well {
   WeekStart starts_on;
   bool can_hover;
   std::optional<Date>& hovered;
+  std::optional<Date> selected;
 
   std::int64_t seconds(Date d) const {
     const auto it = days.find(d);
@@ -153,6 +159,7 @@ void draw_year(const Well& w) {
       const int level = w.level(d);
       draw_cell(w.dl, a, b, level);
       if (d == w.today) draw_today_ring(w.dl, a, b, level, s);
+      if (d == w.selected) draw_selected_ring(w.dl, a, b, s);
       w.hover(d, a, b);
     }
   }
@@ -197,6 +204,7 @@ void draw_day_row(const Well& w, Date first, int count, float gap, LabelFn label
     const int level = w.level(d);
     draw_cell(w.dl, a, b, level);
     if (d == w.today) draw_today_ring(w.dl, a, b, level, s);
+    if (d == w.selected) draw_selected_ring(w.dl, a, b, s);
     w.hover(d, a, b);
   }
   if (small_labels) ui::pop_font();
@@ -248,6 +256,7 @@ void draw_month(const Well& w, DateSpan month) {
       const int level = w.level(d);
       draw_cell(w.dl, a, b, level);
       if (d == w.today) draw_today_ring(w.dl, a, b, level, s);
+      if (d == w.selected) draw_selected_ring(w.dl, a, b, s);
       w.hover(d, a, b);
     }
   }
@@ -335,6 +344,34 @@ void App::draw_history_toolbar() {
   ImGui::Dummy({label_w, h});
   ImGui::SameLine();
   if (ui::button(">##fwd", {h + 8 * s, h}, paged && history_back_ > 0)) --history_back_;
+
+  // Category filter, at the right end of the toolbar.
+  const float combo_w = 180 * s;
+  const float filter_label_w =
+      ImGui::CalcTextSize("Category").x + ImGui::GetStyle().ItemSpacing.x;
+  ImGui::SameLine();
+  ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
+                       std::max(0.0f, ui::avail_width() - filter_label_w - combo_w));
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextUnformatted("Category");
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(combo_w);
+  const std::string preview =
+      filter_ ? std::string(category_name(*filter_)) : std::string("All");
+  if (ui::begin_combo("##filter", preview.c_str())) {
+    if (ImGui::Selectable("All", !filter_)) {
+      filter_.reset();
+      apply_filter();
+    }
+    for (const auto& c : all_categories_) {
+      const std::string name = c.archived ? c.name + " (archived)" : c.name;
+      if (ImGui::Selectable(name.c_str(), filter_ == c.id)) {
+        filter_ = c.id;
+        apply_filter();
+      }
+    }
+    ui::end_combo();
+  }
 }
 
 void App::draw_heatmap_panel() {
@@ -372,7 +409,8 @@ void App::draw_heatmap_panel() {
                   today_day,
                   config_.week_starts_on,
                   ImGui::IsWindowHovered(),
-                  hovered};
+                  hovered,
+                  selected_day_};
   DateSpan span{};
   switch (history_view_) {
     case HistoryView::Year: {
@@ -403,41 +441,29 @@ void App::draw_heatmap_panel() {
   ImGui::Dummy({avail, wmax.y - wmin.y});
   ui::end_group();
 
+  // Click a day to show it in the day panel; click it again, or empty space
+  // in the well, to deselect.
+  if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+      ImGui::IsMouseHoveringRect(wmin, wmax)) {
+    if (hovered && hovered != selected_day_) {
+      selected_day_ = hovered;
+    } else {
+      selected_day_.reset();
+    }
+  }
   if (hovered) draw_day_tooltip(*hovered);
 }
 
 void App::draw_day_tooltip(Date day) {
   if (!ui::begin_tooltip()) return;
-
-  const chr::weekday wd{chr::sys_days{day}};
-  ImGui::Text("%s %s", kWeekdays[wd.c_encoding()], format_date(day).c_str());
-
+  // Just the count and the date: clicking the day shows the details.
   const auto it = day_totals_.find(day);
-  if (it == day_totals_.end()) {
-    ImGui::TextUnformatted("No study");
+  const int n = it == day_totals_.end() ? 0 : it->second.sessions;
+  const std::string when = short_date(day) + ", " + std::to_string(static_cast<int>(day.year()));
+  if (n == 0) {
+    ImGui::Text("No sessions on %s", when.c_str());
   } else {
-    const DayTotal& t = it->second;
-    ImGui::Text("%s   %d session%s   grade %s", format_duration(t.seconds).c_str(), t.sessions,
-                t.sessions == 1 ? "" : "s",
-                std::string(grade_label(daily_grade(t.seconds, config_.daily_goal_minutes)))
-                    .c_str());
-    ImGui::Separator();
-
-    // Per-category breakdown (already sorted by time), names in a column.
-    auto name_of = [&](std::int64_t id) {
-      const auto n = category_names_.find(id);
-      return n == category_names_.end() ? "?" : n->second.c_str();
-    };
-    float name_w = 0;
-    for (const auto& c : t.by_category) {
-      name_w = std::max(name_w, ImGui::CalcTextSize(name_of(c.category_id)).x);
-    }
-    const float time_x = ImGui::GetCursorPosX() + name_w + 3 * ImGui::GetStyle().ItemSpacing.x;
-    for (const auto& c : t.by_category) {
-      ImGui::TextUnformatted(name_of(c.category_id));
-      ImGui::SameLine(time_x);
-      ImGui::TextUnformatted(format_duration(c.seconds).c_str());
-    }
+    ImGui::Text("%d session%s on %s", n, n == 1 ? "" : "s", when.c_str());
   }
   ui::end_tooltip();
 }

@@ -63,8 +63,9 @@ bool button(const char* label, ImVec2 size = {0, 0}, bool enabled = true,
 bool toggle_button(const char* label, bool active, ImVec2 size = {0, 0});
 
 // Group box: an etched frame with a caption set into the top edge.
-// width <= 0 fills the available width.
-void begin_group(const char* caption, float width = 0);
+// width <= 0 fills the available width; the box is at least min_height
+// tall. A group box is one item, so ImGui::SameLine() can follow it.
+void begin_group(const char* caption, float width = 0, float min_height = 0);
 void end_group();
 
 // Width left on the current line: inside a group box, up to its inner
@@ -79,6 +80,21 @@ void end_combo();
 // Single-line text field in a sunken frame. Returns true when Enter is
 // pressed. The label must be hidden ("##id").
 bool input_text(const char* label, char* buf, std::size_t size, float width = 0);
+
+// Win9x list view: raised column headers over a white sunken field whose
+// rows scroll. Columns with width <= 0 share the leftover width. Inside,
+// use list_column_x(i) with ImGui::SameLine / SetCursorPosX to place cells.
+struct ListColumn {
+  const char* title;
+  float width;
+};
+void begin_list(const char* id, std::initializer_list<ListColumn> columns, ImVec2 size);
+float list_column_x(int column);  // relative to the row start
+float list_column_width(int column);
+void end_list();
+
+// A read-only Win9x checkbox (white sunken square, check mark if `checked`).
+void check_mark(bool checked);
 
 // Modal dialog with a black title bar. Open with ImGui::OpenPopup(title);
 // call every frame; only call end_dialog() if begin_dialog() returned true.

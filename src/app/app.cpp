@@ -265,10 +265,21 @@ void App::draw_frame() {
                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
 
+  // Top row: the timer, and the selected day beside it. Like the history
+  // panel, the row stops growing at its default-window width.
   draw_timer_panel();
+  timer_panel_h_ = ImGui::GetItemRectSize().y;
+  const float spacing = ImGui::GetStyle().ItemSpacing.x;
+  ImGui::SameLine(0, spacing);
+  const float row_w = kDefaultWindowWidth * ui_scale_ - 2 * ImGui::GetStyle().WindowPadding.x;
+  const float day_w = std::min(ui::avail_width(), row_w - ImGui::GetItemRectSize().x - spacing);
+  draw_day_panel(day_w, timer_panel_h_);
+
   draw_note_box();
   draw_heatmap_panel();
   draw_recovery_dialog();
+  draw_session_dialog();
+  draw_categories_dialog();
 
   const std::string data = "data: " + data_dir_.string();
   ui::status_bar({status_.c_str(), data.c_str()});
@@ -307,9 +318,31 @@ void App::reload_categories() {
 }
 
 void App::reload_history() {
-  day_totals_ = day_totals(db_->all_sessions(), *tz_, config_.day_rollover_hour);
+  sessions_ = db_->all_sessions();
+  all_categories_ = db_->categories(/*include_archived=*/true);
   category_names_.clear();
-  for (const auto& c : db_->categories(/*include_archived=*/true)) category_names_[c.id] = c.name;
+  for (const auto& c : all_categories_) category_names_[c.id] = c.name;
+  apply_filter();
+}
+
+void App::apply_filter() {
+  // A filtered category that was deleted falls back to "All".
+  if (filter_ && !category_names_.contains(*filter_)) filter_.reset();
+  day_totals_ = day_totals(sessions_, *tz_, config_.day_rollover_hour, filter_);
+}
+
+std::vector<Session> App::sessions_on(Date day) const {
+  std::vector<Session> out;
+  for (const auto& s : sessions_) {
+    if (filter_ && s.category_id != *filter_) continue;
+    if (day_key(s.start_utc, *tz_, config_.day_rollover_hour) == day) out.push_back(s);
+  }
+  return out;
+}
+
+const char* App::category_name(std::int64_t id) const {
+  const auto it = category_names_.find(id);
+  return it == category_names_.end() ? "?" : it->second.c_str();
 }
 
 Date App::today() const { return day_key(now().utc, *tz_, config_.day_rollover_hour); }
