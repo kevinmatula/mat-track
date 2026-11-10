@@ -20,12 +20,11 @@
 
 namespace mattrack {
 
-// Window size in unscaled pixels. Panels that cap their width use the
-// default size, so at the default window they fill it edge to edge.
+// Window size in unscaled pixels. The layout is fixed at this size: the
+// window can't be made smaller, and a larger one just has empty space, so
+// nothing ever moves when resizing.
 constexpr int kDefaultWindowWidth = 1100;
 constexpr int kDefaultWindowHeight = 700;
-constexpr int kMinWindowWidth = 900;
-constexpr int kMinWindowHeight = 600;
 
 struct AppOptions {
   // Overrides the default ~/.local/share/mat-track/.

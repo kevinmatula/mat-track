@@ -146,8 +146,8 @@ bool App::init_window() {
     return false;
   }
   set_window_icon(window_);
-  SDL_SetWindowMinimumSize(window_, static_cast<int>(kMinWindowWidth * s),
-                           static_cast<int>(kMinWindowHeight * s));
+  SDL_SetWindowMinimumSize(window_, static_cast<int>(kDefaultWindowWidth * s),
+                           static_cast<int>(kDefaultWindowHeight * s));
 
   renderer_ = SDL_CreateRenderer(window_, nullptr);
   if (!renderer_) {
@@ -274,13 +274,13 @@ void App::draw_frame() {
                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
 
-  // Everything above the status bar scrolls if the window is too short for
-  // it, so it never runs under the status bar.
+  // Everything above the status bar scrolls if it can't fit. That only
+  // happens if the screen is too small for the window's minimum size.
   ImGui::BeginChild("##content", {0, -ui::status_bar_height()}, ImGuiChildFlags_None);
 
-  // Like the history panel, rows stop growing at their default-window width.
+  // Every row is exactly as wide as it is in the default-size window.
   const float row_w = kDefaultWindowWidth * ui_scale_ - 2 * ImGui::GetStyle().WindowPadding.x;
-  draw_header(std::min(ui::avail_width(), row_w));
+  draw_header(row_w);
   ImGui::Spacing();
 
   // The timer, and the selected day (or the overview) beside it.
@@ -288,7 +288,7 @@ void App::draw_frame() {
   timer_panel_h_ = ImGui::GetItemRectSize().y;
   const float spacing = ImGui::GetStyle().ItemSpacing.x;
   ImGui::SameLine(0, spacing);
-  const float day_w = std::min(ui::avail_width(), row_w - ImGui::GetItemRectSize().x - spacing);
+  const float day_w = row_w - ImGui::GetItemRectSize().x - spacing;
   draw_day_panel(day_w, timer_panel_h_);
 
   draw_heatmap_panel();

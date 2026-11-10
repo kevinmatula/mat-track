@@ -384,7 +384,7 @@ void App::draw_heatmap_panel() {
   // panel instead of stretching to fill a larger window.
   const float max_group =
       kDefaultWindowWidth * ui_scale_ - 2 * ImGui::GetStyle().WindowPadding.x;
-  ui::begin_group("History", std::min(ui::avail_width(), max_group));
+  ui::begin_group("History", max_group);
 
   draw_history_toolbar();
 
