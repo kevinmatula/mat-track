@@ -149,7 +149,12 @@ bool App::init_window() {
   SDL_SetWindowMinimumSize(window_, static_cast<int>(kDefaultWindowWidth * s),
                            static_cast<int>(kDefaultWindowHeight * s));
 
-  renderer_ = SDL_CreateRenderer(window_, nullptr);
+  // Vulkan first: with OpenGL on X11 the UI visibly jitters while the window
+  // is resized vertically (the compositor briefly shows the previous frame
+  // anchored to the bottom). Vulkan frames stay put, at about the same CPU
+  // cost. Machines without Vulkan get SDL's default renderer.
+  renderer_ = SDL_CreateRenderer(window_, "vulkan");
+  if (!renderer_) renderer_ = SDL_CreateRenderer(window_, nullptr);
   if (!renderer_) {
     fail(std::string("Cannot create renderer: ") + SDL_GetError());
     return false;
