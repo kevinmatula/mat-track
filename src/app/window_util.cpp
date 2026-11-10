@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "app/assets.hpp"
+
 #ifdef MAT_TRACK_HAVE_X11
 #include <X11/Xlib.h>
 #endif
@@ -40,6 +42,14 @@ bool activate_x11(SDL_Window* window) {
 #endif
 
 }  // namespace
+
+void set_window_icon(SDL_Window* window) {
+  SDL_IOStream* io = SDL_IOFromConstMem(assets::icon_bmp, assets::icon_bmp_size);
+  SDL_Surface* icon = io ? SDL_LoadBMP_IO(io, /*closeio=*/true) : nullptr;
+  if (!icon) return;  // cosmetic only
+  SDL_SetWindowIcon(window, icon);
+  SDL_DestroySurface(icon);
+}
 
 void bring_to_front(SDL_Window* window) {
 #ifdef MAT_TRACK_HAVE_X11

@@ -51,7 +51,7 @@ void App::draw_settings_dialog() {
   }
   if (!ui::begin_dialog(kSettingsDialog)) return;
 
-  const float s = ui::px();
+  const float s = ui::scale();
   const float group_w = 360 * s;
   const float field_w = 80 * s;
   // Label, number field, unit; the fields line up in one column (SameLine

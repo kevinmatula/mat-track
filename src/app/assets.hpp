@@ -10,4 +10,6 @@ extern const unsigned char chime_wav[];
 extern const std::size_t chime_wav_size;
 extern const unsigned char break_end_wav[];
 extern const std::size_t break_end_wav_size;
+extern const unsigned char icon_bmp[];
+extern const std::size_t icon_bmp_size;
 }  // namespace mattrack::assets

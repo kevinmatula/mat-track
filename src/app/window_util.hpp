@@ -14,4 +14,7 @@ namespace mattrack {
 // request with the "pager" source, which window managers always honour.
 void bring_to_front(SDL_Window* window);
 
+// Sets the window / taskbar icon from the embedded assets/icon.bmp.
+void set_window_icon(SDL_Window* window);
+
 }  // namespace mattrack

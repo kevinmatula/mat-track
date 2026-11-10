@@ -23,7 +23,7 @@ std::string with_commas(std::int64_t n) {
 }  // namespace
 
 void App::draw_header(float width) {
-  const float s = ui::px();
+  const float s = ui::scale();
   const float spacing = ImGui::GetStyle().ItemSpacing.x;
   const ImVec2 start = ImGui::GetCursorScreenPos();
   ui::begin_toolbar(width);

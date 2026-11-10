@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=mat-track
+Comment=Minimal local study tracker
+Exec=@MAT_TRACK_BIN@
+Icon=mat-track
+Terminal=false
+Categories=Education;
+StartupWMClass=mat-track

@@ -51,7 +51,10 @@ const Palette kDark = {
 };
 
 bool g_inverted = false;
+// Two scales: g_px is whole pixels, for bevels and lines (so they stay
+// crisp); g_s is the exact display scale, for sizes, padding and gaps.
 float g_px = 1.0f;
+float g_s = 1.0f;
 
 struct Group {
   ImVec2 start;
@@ -125,6 +128,7 @@ ImVec2 snap(ImVec2 v) { return {std::floor(v.x), std::floor(v.y)}; }
 const Palette& palette() { return g_inverted ? kDark : kLight; }
 bool inverted() { return g_inverted; }
 float px() { return g_px; }
+float scale() { return g_s; }
 
 void load_fonts() {
   ImGuiIO& io = ImGui::GetIO();
@@ -139,6 +143,7 @@ void load_fonts() {
 void apply_theme(bool invert, float display_scale) {
   g_inverted = invert;
   g_px = std::max(1.0f, std::round(display_scale));
+  g_s = display_scale;
   const Palette& p = palette();
 
   ImGuiStyle& style = ImGui::GetStyle();
@@ -244,7 +249,7 @@ bool button(const char* label, ImVec2 size, bool enabled, bool is_default) {
   const ImVec2 text = ImGui::CalcTextSize(label, end);
   const ImGuiStyle& style = ImGui::GetStyle();
   // Win9x buttons are a little wider than their caption.
-  if (size.x <= 0) size.x = std::max(text.x + style.FramePadding.x * 2, 75.0f * g_px);
+  if (size.x <= 0) size.x = std::max(text.x + style.FramePadding.x * 2, 75.0f * g_s);
   if (size.y <= 0) size.y = text.y + style.FramePadding.y * 2;
 
   const ImVec2 min = snap(ImGui::GetCursorScreenPos());
@@ -277,7 +282,7 @@ bool button(const char* label, ImVec2 size, bool enabled, bool is_default) {
     embossed_text(dl, pos, label, end);
   }
   if (hovered) {
-    const float inset = 4 * g_px;
+    const float inset = 4 * g_s;
     dotted_rect(dl, {min.x + inset + shift, min.y + inset + shift},
                 {max.x - inset + shift, max.y - inset + shift}, p.text);
   }
@@ -353,7 +358,7 @@ void end_group() {
   // Caption sits on the top edge, on a patch of face color.
   const char* end = label_end(grp.caption);
   const ImVec2 text = ImGui::CalcTextSize(grp.caption, end);
-  const ImVec2 pos = {grp.start.x + 8 * g_px, grp.start.y};
+  const ImVec2 pos = {grp.start.x + 8 * g_s, grp.start.y};
   dl->AddRectFilled({pos.x - 2 * g_px, pos.y}, {pos.x + text.x + 2 * g_px, pos.y + text.y},
                     p.face);
   dl->AddText(pos, p.text, grp.caption, end);
@@ -423,7 +428,7 @@ void begin_list(const char* id, std::initializer_list<ListColumn> columns, ImVec
   }
 
   // Raised header cells inside the top of the field.
-  const float header_h = ImGui::GetTextLineHeight() + 6 * g_px;
+  const float header_h = ImGui::GetTextLineHeight() + 6 * g_s;
   g_list.min = min;
   g_list.header_h = header_h;
   const float hx = min.x + 2 * g_px;
@@ -435,7 +440,7 @@ void begin_list(const char* id, std::initializer_list<ListColumn> columns, ImVec
     if (i + 1 == columns.size()) cw = std::floor(min.x + size.x - 2 * g_px - cx);  // to the edge
     dl->AddRectFilled({cx, hy}, {cx + cw, hy + header_h}, p.face);
     draw_bevel(dl, {cx, hy}, {cx + cw, hy + header_h}, Bevel::Raised);
-    dl->AddText({cx + 6 * g_px, hy + 3 * g_px}, p.text, c.title);
+    dl->AddText({cx + 6 * g_s, hy + 3 * g_s}, p.text, c.title);
     ++i;
   }
 
@@ -535,7 +540,7 @@ void progress_bar(float fraction, ImVec2 size) {
   // Blocks, as in the classic progress bar, inside a 2px margin.
   const float inner_x0 = a.x + 3 * g_px;
   const float inner_x1 = b.x - 3 * g_px;
-  const float bh = (b.y - a.y) - 6 * g_px;
+  const float bh = (b.y - a.y) - 6 * g_s;
   const float block = std::max(4 * g_px, std::floor(bh * 0.6f));
   const float gap = 2 * g_px;
   const float filled = inner_x0 + (inner_x1 - inner_x0) * std::clamp(fraction, 0.0f, 1.0f);
@@ -549,13 +554,13 @@ void progress_bar(float fraction, ImVec2 size) {
 void begin_toolbar(float width) {
   g_toolbar = {snap(ImGui::GetCursorScreenPos()), std::floor(width)};
   ImGui::BeginGroup();
-  ImGui::SetCursorScreenPos({g_toolbar.start.x + 8 * g_px, g_toolbar.start.y + 4 * g_px});
+  ImGui::SetCursorScreenPos({g_toolbar.start.x + 8 * g_s, g_toolbar.start.y + 4 * g_s});
   ImGui::BeginGroup();
 }
 
 void end_toolbar() {
   ImGui::EndGroup();
-  const float bottom = std::floor(ImGui::GetItemRectMax().y + 4 * g_px);
+  const float bottom = std::floor(ImGui::GetItemRectMax().y + 4 * g_s);
   const ImVec2 a = g_toolbar.start;
   const ImVec2 b = {a.x + g_toolbar.width, bottom};
   draw_bevel(ImGui::GetWindowDrawList(), a, b, Bevel::Raised);
@@ -570,8 +575,8 @@ void toolbar_separator() {
   const Palette& p = palette();
   ImDrawList* dl = ImGui::GetWindowDrawList();
   dl->AddRectFilled({pos.x + 4 * g_px, pos.y}, {pos.x + 5 * g_px, pos.y + h}, p.shadow);
-  dl->AddRectFilled({pos.x + 5 * g_px, pos.y}, {pos.x + 6 * g_px, pos.y + h}, p.highlight);
-  ImGui::Dummy({10 * g_px, h});
+  dl->AddRectFilled({pos.x + 5 * g_px, pos.y}, {pos.x + 6 * g_s, pos.y + h}, p.highlight);
+  ImGui::Dummy({10 * g_s, h});
 }
 
 bool banner(const char* text, float width) {
@@ -584,7 +589,7 @@ bool banner(const char* text, float width) {
   dl->AddRectFilled(a, b, p.well);
   draw_bevel(dl, a, b, Bevel::Sunken);
   dl->PushClipRect(a, b, true);
-  dl->AddText({a.x + 8 * g_px, a.y + (h - ImGui::GetTextLineHeight()) * 0.5f}, p.well_text, text);
+  dl->AddText({a.x + 8 * g_s, a.y + (h - ImGui::GetTextLineHeight()) * 0.5f}, p.well_text, text);
   dl->PopClipRect();
   return clicked;
 }
@@ -608,16 +613,16 @@ bool begin_dialog(const char* title) {
 
   // Title bar: black strip with white caption, inset by the bevel.
   const char* end = label_end(title);
-  const float bar_h = ImGui::GetTextLineHeight() + 6 * g_px;
+  const float bar_h = ImGui::GetTextLineHeight() + 6 * g_s;
   const ImVec2 bmin = {wmin.x + 3 * g_px, wmin.y + 3 * g_px};
   const ImVec2 bmax = {wmax.x - 3 * g_px, bmin.y + bar_h};
   dl->AddRectFilled(snap(bmin), snap(bmax), p.well);
-  dl->AddText({bmin.x + 6 * g_px, bmin.y + 3 * g_px}, p.well_text, title, end);
+  dl->AddText({bmin.x + 6 * g_s, bmin.y + 3 * g_s}, p.well_text, title, end);
 
   // Reserve the bar's height, and enough width for the caption.
   const ImVec2 cursor = ImGui::GetCursorScreenPos();
   ImGui::SetCursorScreenPos({cursor.x, bmax.y});
-  ImGui::Dummy({ImGui::CalcTextSize(title, end).x + 48 * g_px, ImGui::GetStyle().ItemSpacing.y});
+  ImGui::Dummy({ImGui::CalcTextSize(title, end).x + 48 * g_s, ImGui::GetStyle().ItemSpacing.y});
   return true;
 }
 
@@ -628,8 +633,8 @@ bool begin_tooltip() {
   // Pushed in the parent window and popped there again in end_tooltip().
   ImGui::PushStyleColor(ImGuiCol_PopupBg, g4(p.field));
   ImGui::PushStyleColor(ImGuiCol_Border, g4(p.dark_shadow));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {8 * g_px, 6 * g_px});
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {8 * g_px, 3 * g_px});
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {8 * g_s, 6 * g_s});
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {8 * g_s, 3 * g_px});
   if (ImGui::BeginTooltip()) return true;
   ImGui::PopStyleVar(2);
   ImGui::PopStyleColor(2);
@@ -645,8 +650,8 @@ void end_tooltip() {
 void lcd_readout(const char* text, ImVec2 size) {
   push_timer_font();
   const ImVec2 t = ImGui::CalcTextSize(text);
-  const float pad_x = 16 * g_px;
-  const float pad_y = 4 * g_px;
+  const float pad_x = 16 * g_s;
+  const float pad_y = 4 * g_s;
   if (size.x <= 0) size.x = t.x + 2 * pad_x;
   if (size.y <= 0) size.y = t.y + 2 * pad_y;
 
@@ -663,7 +668,7 @@ void lcd_readout(const char* text, ImVec2 size) {
 }
 
 float status_bar_height() {
-  return ImGui::GetTextLineHeight() + 6 * g_px + ImGui::GetStyle().WindowPadding.y;
+  return ImGui::GetTextLineHeight() + 6 * g_s + ImGui::GetStyle().WindowPadding.y;
 }
 
 void status_bar(std::initializer_list<const char*> cells) {
@@ -671,9 +676,9 @@ void status_bar(std::initializer_list<const char*> cells) {
   ImDrawList* dl = ImGui::GetWindowDrawList();
   const ImVec2 wmin = ImGui::GetWindowPos();
   const ImVec2 wsize = ImGui::GetWindowSize();
-  const float h = ImGui::GetTextLineHeight() + 6 * g_px;
-  const float gap = 3 * g_px;
-  const float y0 = std::floor(wmin.y + wsize.y - h - 3 * g_px);
+  const float h = ImGui::GetTextLineHeight() + 6 * g_s;
+  const float gap = 3 * g_s;
+  const float y0 = std::floor(wmin.y + wsize.y - h - 3 * g_s);
 
   // The last cell stretches; the others fit their text.
   float x = wmin.x + gap;
@@ -681,12 +686,12 @@ void status_bar(std::initializer_list<const char*> cells) {
   std::size_t i = 0;
   for (const char* cell : cells) {
     const bool last = ++i == cells.size();
-    const float w = last ? right - x : ImGui::CalcTextSize(cell).x + 12 * g_px;
+    const float w = last ? right - x : ImGui::CalcTextSize(cell).x + 12 * g_s;
     const ImVec2 a = snap({x, y0});
     const ImVec2 b = snap({x + w, y0 + h});
     draw_bevel(dl, a, b, Bevel::Status);
     dl->PushClipRect(a, b, true);
-    dl->AddText({a.x + 6 * g_px, a.y + 3 * g_px}, p.text, cell);
+    dl->AddText({a.x + 6 * g_s, a.y + 3 * g_s}, p.text, cell);
     dl->PopClipRect();
     x += w + gap;
   }

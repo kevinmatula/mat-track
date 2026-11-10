@@ -1,79 +1,114 @@
 # mat-track
 
-A minimal, local-only, black-and-white study tracker for Linux: pomodoro
-timer, a GitHub-style heatmap of study history, and light gamification.
+A minimal, local-only study tracker for Linux, in a grayscale Win9x style: a
+pomodoro timer that logs your sessions, a heatmap of your study history, and
+a little gamification (levels, streaks, grades, records). No accounts, no
+network; everything stays in one SQLite file on your machine.
 
-> Work in progress. The core (rollover-aware time handling, SQLite storage,
-> timer state machine, stats, gamification, config) is done and tested. The
-> app has a working pomodoro timer that logs sessions, and a history panel
-> with year, month and week heatmaps (per-day tooltips, period totals). Click
-> a day to see and edit its sessions; filter the history by category; manage
-> categories from the timer's Edit... button. A header shows level, XP,
-> streak and today's grade (with new-record banners); with no day selected
-> the day panel shows this week and your records. Settings... (or F3) edits
-> goals, timer lengths and alerts. Polish (shortcuts, install) is still to come.
-
-## Build dependencies (Linux Mint 22 / Ubuntu 24.04)
+## Install
 
 ```sh
 sudo apt install build-essential cmake ninja-build git \
-  libsqlite3-dev \
   libasound2-dev libpulse-dev \
   libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
   libxss-dev libxtst-dev libxkbcommon-dev \
   libwayland-dev wayland-protocols libdecor-0-dev \
   libdrm-dev libgbm-dev libegl1-mesa-dev libgl1-mesa-dev libdbus-1-dev libudev-dev
+./install.sh
 ```
 
-`libsqlite3-dev` is optional: without it, the SQLite amalgamation is
-downloaded and compiled in. SDL3, Dear ImGui and Catch2 are always fetched
-by CMake (pinned versions in `cmake/Dependencies.cmake`).
+`install.sh` builds a Release version and installs, for your user only:
 
-## Build and test
+- `~/.local/bin/mat-track`
+- `~/.local/share/applications/mat-track.desktop` (so it shows up in the Mint menu)
+- `~/.local/share/icons/hicolor/scalable/apps/mat-track.svg`
+
+`./install.sh --uninstall` removes exactly those files. Neither touches your
+data. `PREFIX=/some/dir ./install.sh` installs somewhere else.
+
+## Using it
+
+- **Timer**: pick a category and press **Start** (or Space). When the
+  session ends, a jingle repeats and the window comes to the front until you
+  click **Start break** or **Skip break**; when the break ends, another
+  jingle plays until **Start** or **Dismiss**. After a session you can add a
+  note right in the timer panel.
+- **Header**: your level and XP (1 XP per minute studied), current streak,
+  and today's grade. A banner appears when a session sets a new record.
+- **History**: Year, Month and Week views of shaded cells (lighter = more of
+  your daily goal). Hover a day for its session count; click it to list and
+  edit its sessions. The Category dropdown filters the history.
+- **Overview**: with no day selected, this week's total and grade, and your
+  all-time records.
+- **Settings...** (or F3): daily goal, streak minimum, timer lengths and
+  alerts. A new daily goal applies from today on; past days keep the grades
+  they earned.
+- **Categories**: the **Edit...** button next to the timer's category. Archive
+  a category to hide it from the timer while keeping its history.
+
+### Keyboard
+
+| Key | Action |
+|---|---|
+| Space | Start / pause / resume (or start the break / next session when it rings) |
+| Esc | Stop the session (asks first if it's over a minute) |
+| S | Skip the break |
+| `[` / `]` | Previous / next category |
+| F2 | Invert colors (dark variant) |
+| F3 | Settings |
+| Ctrl+Q | Quit (asks first if a session is running) |
+
+Closing the window during a session asks: **Save and quit** (logs it as not
+completed), **Keep running**, or **Discard**.
+
+## Your data
+
+Everything lives in `~/.local/share/mat-track/`:
+
+- `mat-track.db`: every session (UTC times, so time zone changes are safe),
+  categories, and the history of your daily goal. Back this file up to keep
+  your history.
+- `config.toml`: settings, written with defaults on first run. Most are in
+  the Settings dialog; a few are file-only:
+
+  | Key | Default | |
+  |---|---|---|
+  | `day_rollover_hour` | `4` | A study day starts at this local hour, so 1am counts as yesterday |
+  | `week_starts_on` | `"monday"` | Or `"sunday"` |
+  | `min_log_seconds` | `60` | Sessions stopped earlier than this aren't logged |
+  | `max_session_minutes` | `240` | A session longer than this stops itself |
+  | `auto_start_next` | `false` | Start the next session when a break ends |
+
+- `active_session.json`: only while a session runs. If the app is killed,
+  the next start offers to save the interrupted session.
+
+## Development
 
 ```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build
+cmake -S . -B build -G Ninja
+cmake --build build && ctest --test-dir build
+./build/mat-track --data-dir /tmp/mt                     # keep test data separate
+./build/mat-track --data-dir /tmp/demo --seed-demo       # ~6 months of sample data
 ```
 
-CMake options:
+`--seed-demo` only works with `--data-dir` and an empty database, so sample
+sessions never reach your real history. For quick sessions, put fractional
+minutes in that data dir's `config.toml` (`focus_minutes = 0.1` is 6 s).
 
-| Option | Default | |
+The code is split into `src/core/` (no UI: time and rollover handling, the
+SQLite layer, the timer state machine, stats and gamification, all unit
+tested) and `src/app/` (SDL3 + Dear ImGui). SDL3, Dear ImGui and Catch2 are
+fetched by CMake at pinned versions (`cmake/Dependencies.cmake`); SQLite comes
+from `libsqlite3-dev` if installed, otherwise from the fetched amalgamation.
+
+| CMake option | Default | |
 |---|---|---|
-| `MAT_TRACK_BUILD_APP` | `ON` | Fetch/build SDL3 + ImGui and the app |
-| `MAT_TRACK_BUILD_TESTS` | `ON` | Fetch Catch2 and build the unit tests |
-| `MAT_TRACK_SANITIZE` | `OFF` | Build with `-fsanitize=address,undefined` (use with `Debug`) |
+| `MAT_TRACK_BUILD_APP` | `ON` | Build the app (`OFF` for a fast core-only loop) |
+| `MAT_TRACK_BUILD_TESTS` | `ON` | Build the unit tests |
+| `MAT_TRACK_SANITIZE` | `OFF` | `-fsanitize=address,undefined` (use with `Debug`) |
 
-For a fast core-only loop: `-DMAT_TRACK_BUILD_APP=OFF`.
-
-## Run
-
-```sh
-./build/mat-track                        # data in ~/.local/share/mat-track/
-./build/mat-track --data-dir /tmp/mt     # separate data dir for testing
-./build/mat-track --data-dir /tmp/demo --seed-demo   # ~6 months of sample data
-```
-
-`--seed-demo` only works together with `--data-dir` and only on an empty
-database, so sample sessions can never end up in your real history.
-
-The data directory holds `mat-track.db` (SQLite) and `config.toml`, which is
-written with defaults on first run. While a session runs it also holds
-`active_session.json`; if the app is killed, the next start offers to save
-the interrupted session.
-
-To try a full session quickly, put fractional minutes in `config.toml`:
-
-```toml
-focus_minutes = 0.5   # 30 s session
-break_minutes = 0.25
-```
-
-Completed sessions are always logged; sessions stopped early are logged only
-if they ran at least `min_log_seconds` (default 60).
-
-## Sanitizers
+Under the sanitizers, run the app with the one known SDL3 PulseAudio leak
+suppressed:
 
 ```sh
 cmake -S . -B build-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMAT_TRACK_SANITIZE=ON
@@ -81,18 +116,8 @@ cmake --build build-asan && ctest --test-dir build-asan
 LSAN_OPTIONS=suppressions=tools/lsan.supp ./build-asan/mat-track --data-dir /tmp/mt
 ```
 
-`tools/lsan.supp` silences one known leak inside SDL3's PulseAudio backend.
-
-## Sounds
-
-When a focus session completes, a jingle repeats (and the taskbar entry
-flashes) until you click **Start break** or **Skip break**; when a break
-ends, a second jingle repeats until **Start** or **Dismiss**. Meanwhile the
-window is restored if minimized, focused, and kept above other windows. `sound_enabled = false` silences the jingles;
-`raise_on_alarm = false` stops the window from popping up.
-
-`assets/chime.wav` and `assets/break_end.wav` are generated sine jingles:
-`python3 tools/gen_sounds.py` rewrites them.
+The jingles and the icon are generated: `python3 tools/gen_sounds.py` and
+`python3 tools/gen_icon.py` rewrite `assets/`.
 
 ## Licenses
 

@@ -63,6 +63,7 @@ if(MAT_TRACK_BUILD_APP)
   mat_track_embed(font_src font_ttf ${CMAKE_CURRENT_SOURCE_DIR}/assets/font.ttf)
   mat_track_embed(chime_src chime_wav ${CMAKE_CURRENT_SOURCE_DIR}/assets/chime.wav)
   mat_track_embed(break_end_src break_end_wav ${CMAKE_CURRENT_SOURCE_DIR}/assets/break_end.wav)
+  mat_track_embed(icon_src icon_bmp ${CMAKE_CURRENT_SOURCE_DIR}/assets/icon.bmp)
 
   add_executable(mat-track
     src/app/main.cpp
@@ -79,6 +80,7 @@ if(MAT_TRACK_BUILD_APP)
     ${font_src}
     ${chime_src}
     ${break_end_src}
+    ${icon_src}
   )
   target_link_libraries(mat-track PRIVATE mat_track_core imgui SDL3::SDL3)
   # Used to bring the window to the front past focus-stealing prevention.
@@ -88,6 +90,17 @@ if(MAT_TRACK_BUILD_APP)
     target_compile_definitions(mat-track PRIVATE MAT_TRACK_HAVE_X11)
   endif()
   mat_track_warnings(mat-track)
+
+  # Install: the binary, a desktop menu entry and its icon (see install.sh).
+  include(GNUInstallDirs)
+  install(TARGETS mat-track RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  set(MAT_TRACK_BIN ${CMAKE_INSTALL_FULL_BINDIR}/mat-track)
+  configure_file(packaging/mat-track.desktop.in ${CMAKE_CURRENT_BINARY_DIR}/mat-track.desktop @ONLY)
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/mat-track.desktop
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  install(FILES assets/icon.svg
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+          RENAME mat-track.svg)
 endif()
 
 # ---- tests ------------------------------------------------------------------

@@ -28,7 +28,7 @@ void App::draw_categories_dialog() {
   }
   if (!ui::begin_dialog(kCategoriesDialog)) return;
 
-  const float s = ui::px();
+  const float s = ui::scale();
   std::map<std::int64_t, int> counts;
   for (const auto& x : sessions_) ++counts[x.category_id];
   int active = 0;

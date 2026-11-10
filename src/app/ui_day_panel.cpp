@@ -35,7 +35,7 @@ std::string fit_text(const std::string& text, float width) {
 }  // namespace
 
 void App::draw_day_panel(float width, float height) {
-  const float s = ui::px();
+  const float s = ui::scale();
   const float bottom = ImGui::GetCursorScreenPos().y + height;
   ui::begin_group(selected_day_ ? "Day" : "Overview", width, height);
 
@@ -117,7 +117,7 @@ void App::draw_day_panel(float width, float height) {
 // all-time records. Every category, ignoring the filter. Two columns when
 // there is room; otherwise one compact column without the category split.
 void App::draw_overview() {
-  const float s = ui::px();
+  const float s = ui::scale();
   const float avail = ui::avail_width();
   const bool two_columns = avail >= 560 * s;
   const float x0 = ImGui::GetCursorPosX();
@@ -197,7 +197,7 @@ void App::draw_session_dialog() {
   }
   if (!editing_ || !ui::begin_dialog(kSessionDialog)) return;
 
-  const float s = ui::px();
+  const float s = ui::scale();
   const Session& x = *editing_;
   ImGui::Text("%s, %s, %s", weekday_and_date(day_key(x.start_utc, *tz_, config_.day_rollover_hour))
                                 .c_str(),

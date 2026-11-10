@@ -126,6 +126,9 @@ bool App::init_data() {
 }
 
 bool App::init_window() {
+  // Closing the window must be able to ask first ("Session in progress"),
+  // so SDL shouldn't quit on its own when the last window closes.
+  SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
   if (!SDL_Init(SDL_INIT_VIDEO)) {
     fail(std::string("SDL_Init failed: ") + SDL_GetError());
     return false;
@@ -142,6 +145,7 @@ bool App::init_window() {
     fail(std::string("Cannot create window: ") + SDL_GetError());
     return false;
   }
+  set_window_icon(window_);
   SDL_SetWindowMinimumSize(window_, static_cast<int>(kMinWindowWidth * s),
                            static_cast<int>(kMinWindowHeight * s));
 
@@ -157,7 +161,8 @@ bool App::init_window() {
   ImGui::CreateContext();
   ImGuiIO& io = ImGui::GetIO();
   io.IniFilename = nullptr;  // single fixed layout; nothing to persist
-  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+  // No keyboard navigation: Space / Esc are app shortcuts, and must not also
+  // activate whichever widget has nav focus.
   ImGui_ImplSDL3_InitForSDLRenderer(window_, renderer_);
   ImGui_ImplSDLRenderer3_Init(renderer_);
   imgui_ready_ = true;
@@ -192,10 +197,12 @@ void App::process_event(const SDL_Event& event) {
   ImGui_ImplSDL3_ProcessEvent(&event);
   switch (event.type) {
     case SDL_EVENT_QUIT:
+      // From the system (e.g. SIGTERM): no chance to ask, so quit now and
+      // keep any recovery file for the next start.
       running_ = false;
       break;
     case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-      if (event.window.windowID == SDL_GetWindowID(window_)) running_ = false;
+      if (event.window.windowID == SDL_GetWindowID(window_)) request_quit();
       break;
     case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
@@ -291,9 +298,9 @@ void App::draw_frame() {
   draw_session_dialog();
   draw_categories_dialog();
   draw_settings_dialog();
-  if (ImGui::IsKeyPressed(ImGuiKey_F3) && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
-    open_settings_dialog_ = true;
-  }
+  draw_stop_dialog();
+  draw_quit_dialog();
+  handle_shortcuts();
 
   const std::string data = "data: " + data_dir_.string();
   ui::status_bar({status_.c_str(), data.c_str()});
@@ -492,6 +499,83 @@ void App::ring(Alarm alarm) {
     bring_to_front(window_);
     SDL_SetWindowAlwaysOnTop(window_, true);
     raised_for_alarm_ = true;
+    // The window just took focus: keys typed for another app in this
+    // moment (e.g. a Space) must not start the break.
+    shortcuts_blocked_until_ = Clock::now() + std::chrono::seconds(1);
+  }
+}
+
+void App::request_quit() {
+  const TimerState st = timer_.state();
+  if (st == TimerState::Running || st == TimerState::Paused) {
+    open_quit_dialog_ = true;  // "Session in progress"
+  } else {
+    running_ = false;
+  }
+}
+
+void App::toggle_invert() {
+  config_.invert_colors = !config_.invert_colors;
+  ui::apply_theme(config_.invert_colors, ui_scale_);
+  try {
+    save_config(config_, data_dir_ / "config.toml");
+  } catch (const std::exception& e) {
+    status_ = std::string("Warning: setting not saved (") + e.what() + ")";
+  }
+}
+
+void App::cycle_category(int step) {
+  if (categories_.empty()) return;
+  const auto n = static_cast<int>(categories_.size());
+  int i = 0;
+  while (i < n && categories_[static_cast<std::size_t>(i)].id != selected_category_) ++i;
+  i = ((i == n ? 0 : i) + step + n) % n;
+  selected_category_ = categories_[static_cast<std::size_t>(i)].id;
+}
+
+void App::handle_shortcuts() {
+  // Not while typing, while a dialog is open, or just after the window
+  // jumped to the front for an alarm.
+  const ImGuiIO& io = ImGui::GetIO();
+  if (io.WantTextInput || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) ||
+      Clock::now() < shortcuts_blocked_until_) {
+    return;
+  }
+  auto pressed = [](ImGuiKey key) { return ImGui::IsKeyPressed(key, /*repeat=*/false); };
+  const TimerState st = timer_.state();
+
+  if (io.KeyCtrl && pressed(ImGuiKey_Q)) {
+    request_quit();
+  } else if (pressed(ImGuiKey_Space)) {
+    // The same as each state's main (outlined) button.
+    switch (st) {
+      case TimerState::Idle: start_session(); break;
+      case TimerState::Running: pause_session(); break;
+      case TimerState::Paused: resume_session(); break;
+      case TimerState::BreakReady: start_break(); break;
+      default: break;
+    }
+  } else if (pressed(ImGuiKey_Escape)) {
+    if (st == TimerState::Running || st == TimerState::Paused) {
+      // Ask before throwing away more than a minute of a session.
+      if (timer_.focused() > 60 * kNsPerSecond) {
+        open_stop_dialog_ = true;
+      } else {
+        stop_session();
+      }
+    } else if (alarm_ == Alarm::BreakDone) {
+      silence();  // same as Dismiss
+    }
+  } else if (pressed(ImGuiKey_S)) {
+    skip_break();
+  } else if (pressed(ImGuiKey_LeftBracket) && st == TimerState::Idle) {
+    cycle_category(-1);
+  } else if (pressed(ImGuiKey_RightBracket) && st == TimerState::Idle) {
+    cycle_category(+1);
+  } else if (pressed(ImGuiKey_F2)) {
+    toggle_invert();
+  } else if (pressed(ImGuiKey_F3)) {
+    open_settings_dialog_ = true;
   }
 }
 

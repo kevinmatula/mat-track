@@ -79,6 +79,13 @@ class App {
   enum class Alarm { None, FocusDone, BreakDone };
   void ring(Alarm alarm);
   void silence();
+
+  // ---- keyboard and quitting (app.cpp) ----
+  void handle_shortcuts();
+  // Quits, or asks first if a session is running or paused.
+  void request_quit();
+  void toggle_invert();               // F2; saved in config.toml
+  void cycle_category(int step);      // [ and ]
   // Logs (or discards) the finished session, then moves the timer on.
   void handle_finished();
   void write_recovery(UnixSeconds utc);
@@ -98,6 +105,8 @@ class App {
   void draw_timer_panel();
   void draw_note_row();
   void draw_recovery_dialog();
+  void draw_stop_dialog();  // Esc more than a minute into a session
+  void draw_quit_dialog();  // closing while a session is in progress
   // ---- panels (ui_heatmap.cpp) ----
   void draw_heatmap_panel();
   void draw_history_toolbar();
@@ -187,6 +196,9 @@ class App {
   std::string status_ = "Ready";
   Alarm alarm_ = Alarm::None;
   bool raised_for_alarm_ = false;  // window held on top until the alarm ends
+  Clock::time_point shortcuts_blocked_until_{};
+  bool open_stop_dialog_ = false;
+  bool open_quit_dialog_ = false;
 
   // Inline note prompt for the session just logged.
   std::optional<std::int64_t> note_session_id_;

@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <cstdio>
+#include <string>
 
 #include "app/app.hpp"
 #include "app/theme.hpp"
@@ -27,7 +28,7 @@ void App::draw_timer_panel() {
 
   ui::begin_group("Timer", kPanelWidth * ui_scale_);
 
-  char digits[16];
+  char digits[48];  // room for any int64 minutes:seconds
   const std::int64_t shown =
       countdown_seconds() >= 0 ? countdown_seconds() : timer_.focus_target() / kNsPerSecond;
   format_mmss(shown, digits, sizeof digits);
@@ -71,7 +72,7 @@ void App::draw_timer_panel() {
   ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted("Category");
   ImGui::SameLine();
-  const float edit_w = 75.0f * ui::px();
+  const float edit_w = 75.0f * ui::scale();
   ImGui::SetNextItemWidth(ui::avail_width() - edit_w - ImGui::GetStyle().ItemSpacing.x);
   if (ui::begin_combo("##category", preview, !active)) {
     for (const auto& c : categories_) {
@@ -132,7 +133,7 @@ void App::draw_note_row() {
   ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted("Note");
   ImGui::SameLine();
-  const float buttons = 2 * 75.0f * ui::px() + 2 * ImGui::GetStyle().ItemSpacing.x;
+  const float buttons = 2 * 75.0f * ui::scale() + 2 * ImGui::GetStyle().ItemSpacing.x;
   bool save = ui::input_text("##note", note_buf_.data(), note_buf_.size(),
                              ui::avail_width() - buttons);
   ImGui::SameLine();
@@ -171,6 +172,57 @@ void App::draw_recovery_dialog() {
   ImGui::SameLine();
   if (ui::button("Discard")) {
     discard_recovered_session();
+    ImGui::CloseCurrentPopup();
+  }
+  ui::end_dialog();
+}
+
+void App::draw_stop_dialog() {
+  constexpr const char* kTitle = "Stop session";
+  if (open_stop_dialog_) {
+    ImGui::OpenPopup(kTitle);
+    open_stop_dialog_ = false;
+  }
+  if (!ui::begin_dialog(kTitle)) return;
+  const std::string done = format_duration(timer_.focused() / kNsPerSecond);
+  ImGui::Text("Stop this session? %s will be logged as not completed.", done.c_str());
+  ImGui::Spacing();
+  if (ui::button("Stop", {}, true, true)) {
+    stop_session();
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::SameLine();
+  if (ui::button("Keep going", {100 * ui::scale(), 0})) ImGui::CloseCurrentPopup();
+  ui::end_dialog();
+}
+
+void App::draw_quit_dialog() {
+  constexpr const char* kTitle = "Session in progress";
+  if (open_quit_dialog_) {
+    ImGui::OpenPopup(kTitle);
+    open_quit_dialog_ = false;
+  }
+  if (!ui::begin_dialog(kTitle)) return;
+  const std::string done = format_duration(timer_.focused() / kNsPerSecond);
+  ImGui::Text("A session is in progress (%s).", done.c_str());
+  ImGui::TextUnformatted("Save it before quitting?");
+  ImGui::Spacing();
+  const float w = 120 * ui::scale();
+  if (ui::button("Save and quit", {w, 0}, true, true)) {
+    stop_session();  // logged as not completed
+    running_ = false;
+    ImGui::CloseCurrentPopup();
+  }
+  ImGui::SameLine();
+  if (ui::button("Keep running", {w, 0})) ImGui::CloseCurrentPopup();
+  ImGui::SameLine();
+  if (ui::button("Discard", {w, 0})) {
+    // Quit without logging, and without leaving a recovery file behind.
+    remove_recovery(recovery_path());
+    recovery_for_start_ = -1;
+    timer_ = Timer(TimerSettings::from_config(config_));
+    status_ = "Session discarded.";
+    running_ = false;
     ImGui::CloseCurrentPopup();
   }
   ui::end_dialog();

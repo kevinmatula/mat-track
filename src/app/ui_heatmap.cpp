@@ -306,7 +306,7 @@ void draw_legend(ImDrawList* dl, float right, float y, float line_h, float s) {
 }  // namespace
 
 void App::draw_history_toolbar() {
-  const float s = ui::px();
+  const float s = ui::scale();
   const std::pair<HistoryView, const char*> views[] = {
       {HistoryView::Year, "Year"}, {HistoryView::Month, "Month"}, {HistoryView::Week, "Week"}};
   const float toggle_w = ImGui::CalcTextSize("Month").x + 2 * ImGui::GetStyle().FramePadding.x;
@@ -375,7 +375,7 @@ void App::draw_history_toolbar() {
 }
 
 void App::draw_heatmap_panel() {
-  const float s = ui::px();
+  const float s = ui::scale();
   const float pad = 12 * s;
   const float line_h = ImGui::GetTextLineHeight();
 

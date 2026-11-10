@@ -40,8 +40,10 @@ void load_fonts();
 // Safe to call again when the scale or invert setting changes.
 void apply_theme(bool invert, float display_scale);
 
-// Width in pixels of one bevel line at the current scale.
+// Width in pixels of one bevel line at the current scale (whole pixels).
 float px();
+// The exact UI scale (e.g. 1.5), for sizes, padding and gaps.
+float scale();
 
 enum class Bevel {
   Raised,   // buttons, panels
