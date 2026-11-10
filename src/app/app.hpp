@@ -13,6 +13,7 @@
 #include "app/audio.hpp"
 #include "core/config.hpp"
 #include "core/db.hpp"
+#include "core/gamification.hpp"
 #include "core/recovery.hpp"
 #include "core/stats.hpp"
 #include "core/timer.hpp"
@@ -95,7 +96,7 @@ class App {
 
   // ---- panels (ui_timer.cpp) ----
   void draw_timer_panel();
-  void draw_note_box();
+  void draw_note_row();
   void draw_recovery_dialog();
   // ---- panels (ui_heatmap.cpp) ----
   void draw_heatmap_panel();
@@ -104,8 +105,18 @@ class App {
   // ---- panels (ui_day_panel.cpp) ----
   void draw_day_panel(float width, float height);
   void draw_session_dialog();
+  void draw_overview();
   // ---- panels (ui_categories.cpp) ----
   void draw_categories_dialog();
+  // ---- panels (ui_stats.cpp) ----
+  void draw_header(float width);
+  // ---- panels (ui_settings.cpp) ----
+  void draw_settings_dialog();
+  // Saves `config`, and applies it right away (timer lengths from the next
+  // session on if one is running).
+  void apply_settings(const Config& config);
+  // After logging: a banner for any records the new session beat.
+  void note_new_records(const Records& before);
 
   // Re-derives day_totals_ from sessions_ for the current filter.
   void apply_filter();
@@ -139,6 +150,10 @@ class App {
   std::vector<Category> all_categories_;    // including archived, by name
   std::map<std::int64_t, std::string> category_names_;  // includes archived
   DayTotals day_totals_;                    // for the current filter
+  DayTotals all_days_;                      // every category (header, records)
+  Records records_;                         // all-time, every category
+  GoalHistory goals_;                       // the daily goal over time
+  std::string banner_;                      // "NEW RECORD: ...", until dismissed
   // History filter: one category, or all of them.
   CategoryFilter filter_;
   // Day shown in the day panel (clicked in the History panel).
@@ -151,6 +166,12 @@ class App {
   std::int64_t edit_category_ = 0;
   std::array<char, 256> edit_note_{};
   bool confirm_delete_ = false;
+
+  // "Settings" dialog.
+  bool open_settings_dialog_ = false;
+  Config edit_config_;
+  // New timer lengths, held until the timer is idle.
+  std::optional<TimerSettings> pending_timer_settings_;
 
   // "Categories" dialog.
   bool open_categories_dialog_ = false;

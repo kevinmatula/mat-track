@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/goals.hpp"
 #include "core/models.hpp"
 
 struct sqlite3;
@@ -22,7 +23,7 @@ class DbError : public std::runtime_error {
 // All methods throw DbError on SQLite failures.
 class Db {
  public:
-  static constexpr int kSchemaVersion = 1;
+  static constexpr int kSchemaVersion = 2;
   static constexpr std::string_view kDefaultCategory = "General";
 
   // `path` may be ":memory:" for tests.
@@ -58,6 +59,12 @@ class Db {
   bool update_session_category(std::int64_t id, std::int64_t category_id);
   bool update_session_note(std::int64_t id, std::string_view note);
   bool delete_session(std::int64_t id);
+
+  // ---- daily goal history ----
+  std::vector<GoalChange> goal_changes() const;  // oldest first
+  // Sets the goal from `day` on; replaces a change already made that day.
+  // Throws std::invalid_argument if minutes <= 0.
+  void set_goal_from(Date day, int minutes);
 
   // Runs `fn` atomically; rolls back and rethrows if it throws. Uses a
   // savepoint, so transactions may nest.

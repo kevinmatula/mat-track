@@ -410,3 +410,25 @@ TEST_CASE("settings from config", "[timer]") {
   CHECK(s.min_log_seconds == 60);
   CHECK(s.max_session == 240 * kMin);
 }
+
+TEST_CASE("settings can change while idle, keeping the cycle count", "[timer]") {
+  Fixture f;
+  f.complete_one();
+  f.skip_break();
+  REQUIRE(f.timer.completed_in_cycle() == 1);
+
+  auto s = settings();
+  s.focus = 25 * kMin;
+  CHECK(f.timer.set_settings(s));
+  CHECK(f.timer.completed_in_cycle() == 1);
+  CHECK(f.timer.focus_target() == 25 * kMin);
+
+  SECTION("a running session keeps its length") {
+    f.start();
+    auto longer = s;
+    longer.focus = 90 * kMin;
+    CHECK_FALSE(f.timer.set_settings(longer));
+    f.run_for(25 * kMin);
+    CHECK(f.timer.state() == TimerState::Finished);
+  }
+}

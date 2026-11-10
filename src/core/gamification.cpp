@@ -46,13 +46,13 @@ std::string_view grade_label(Grade g) {
 }
 
 Grade weekly_grade(const DayTotals& days, Date today, WeekStart starts_on,
-                   int daily_goal_minutes) {
-  const double goal_seconds = std::max(1, daily_goal_minutes) * 60.0;
+                   const GoalHistory& goals) {
   double sum = 0;
   int count = 0;
   for (Date d = week_start(today, starts_on); d <= today; d = add_days(d, 1)) {
     const auto it = days.find(d);
     const double secs = it == days.end() ? 0.0 : static_cast<double>(it->second.seconds);
+    const double goal_seconds = std::max(1, goals.on(d)) * 60.0;
     sum += std::min(secs / goal_seconds, kWeeklyRatioCap);
     ++count;
   }

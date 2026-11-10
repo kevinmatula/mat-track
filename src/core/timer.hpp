@@ -65,6 +65,11 @@ class Timer {
  public:
   explicit Timer(TimerSettings settings);
 
+  // Replaces the lengths, keeping the pomodoro cycle count. Only allowed
+  // while Idle (returns false otherwise), so a running session or break
+  // keeps the length it started with.
+  bool set_settings(TimerSettings settings);
+
   // Each command returns false (and does nothing) if not valid in the
   // current state.
   bool start(std::int64_t category_id, MonoNs now, UnixSeconds now_utc);

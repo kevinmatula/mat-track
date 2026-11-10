@@ -96,6 +96,27 @@ void end_list();
 // A read-only Win9x checkbox (white sunken square, check mark if `checked`).
 void check_mark(bool checked);
 
+// Editable Win9x checkbox with a label. Returns true when toggled.
+bool checkbox(const char* label, bool* value);
+
+// Number fields in a sunken frame (labels hidden, "##id"). Values are
+// clamped to [min, max]. Return true when changed.
+bool input_int(const char* label, int* value, int min, int max, float width);
+bool input_minutes(const char* label, double* value, double min, double max, float width);
+
+// Win9x progress bar: a sunken white field filled with separate blocks.
+void progress_bar(float fraction, ImVec2 size);
+
+// Raised strip (like a toolbar) holding one row of items.
+void begin_toolbar(float width);
+void end_toolbar();
+// Etched vertical divider between toolbar items.
+void toolbar_separator();
+
+// One line of white text on a black strip, for notices such as new
+// records. Returns true when clicked (to dismiss it).
+bool banner(const char* text, float width);
+
 // Modal dialog with a black title bar. Open with ImGui::OpenPopup(title);
 // call every frame; only call end_dialog() if begin_dialog() returned true.
 bool begin_dialog(const char* title);

@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/goals.hpp"
 #include "core/stats.hpp"
 
 // Everything here is derived from the session log on demand; nothing is
@@ -25,8 +26,13 @@ constexpr double kWeeklyRatioCap = 1.5;
 // Average of daily ratios (each capped at 1.5) over the days of the week
 // containing `today` up to and including `today`, so a week in progress is
 // not penalised for days that have not happened yet.
+// Each day's ratio uses the goal in effect that day.
 Grade weekly_grade(const DayTotals& days, Date today, WeekStart starts_on,
-                   int daily_goal_minutes);
+                   const GoalHistory& goals);
+inline Grade weekly_grade(const DayTotals& days, Date today, WeekStart starts_on,
+                          int daily_goal_minutes) {
+  return weekly_grade(days, today, starts_on, GoalHistory(daily_goal_minutes));
+}
 
 // ---- XP and levels ----------------------------------------------------------
 

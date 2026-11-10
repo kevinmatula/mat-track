@@ -4,6 +4,8 @@
 
 #include <utility>
 
+#include "core/time_util.hpp"
+
 namespace mattrack {
 
 namespace {
@@ -115,6 +117,13 @@ constexpr const char* kMigrations[] = {
       CREATE INDEX idx_sessions_start ON sessions(start_utc);
       CREATE INDEX idx_sessions_cat   ON sessions(category_id);
       INSERT INTO categories(name) VALUES ('General');
+    )sql",
+    // v2: the daily goal over time, so changing it never regrades the past.
+    R"sql(
+      CREATE TABLE goal_changes (
+        from_day  TEXT PRIMARY KEY,   -- 'YYYY-MM-DD' study day
+        minutes   INTEGER NOT NULL CHECK (minutes > 0)
+      );
     )sql",
 };
 static_assert(std::size(kMigrations) == Db::kSchemaVersion);
@@ -235,6 +244,27 @@ bool Db::delete_category(std::int64_t id) {
     deleted = sqlite3_changes(db_) > 0;
   });
   return deleted;
+}
+
+// ---- daily goal history -----------------------------------------------------
+
+std::vector<GoalChange> Db::goal_changes() const {
+  Stmt s(db_, "SELECT from_day, minutes FROM goal_changes ORDER BY from_day");
+  std::vector<GoalChange> out;
+  while (s.step()) {
+    const auto day = parse_date(s.text_col(0));
+    if (!day) throw DbError("bad date in goal_changes: " + s.text_col(0));
+    out.push_back({*day, static_cast<int>(s.int_col(1))});
+  }
+  return out;
+}
+
+void Db::set_goal_from(Date day, int minutes) {
+  if (minutes <= 0) throw std::invalid_argument("goal minutes must be positive");
+  Stmt(db_, "INSERT OR REPLACE INTO goal_changes(from_day, minutes) VALUES (?, ?)")
+      .bind(1, format_date(day))
+      .bind(2, std::int64_t{minutes})
+      .run();
 }
 
 // ---- sessions ---------------------------------------------------------------

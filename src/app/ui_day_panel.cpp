@@ -37,10 +37,10 @@ std::string fit_text(const std::string& text, float width) {
 void App::draw_day_panel(float width, float height) {
   const float s = ui::px();
   const float bottom = ImGui::GetCursorScreenPos().y + height;
-  ui::begin_group("Day", width, height);
+  ui::begin_group(selected_day_ ? "Day" : "Overview", width, height);
 
   if (!selected_day_) {
-    ImGui::TextDisabled("Click a day in History to see its sessions.");
+    draw_overview();
     ui::end_group();
     return;
   }
@@ -60,7 +60,7 @@ void App::draw_day_panel(float width, float height) {
   } else {
     ImGui::Text("%s   %zu session%s   grade %s", format_duration(total).c_str(), sessions.size(),
                 sessions.size() == 1 ? "" : "s",
-                std::string(grade_label(daily_grade(total, config_.daily_goal_minutes))).c_str());
+                std::string(grade_label(daily_grade(total, goals_.on(day)))).c_str());
   }
 
   // The list fills the rest of the panel (which matches the timer's height).
@@ -111,6 +111,83 @@ void App::draw_day_panel(float width, float height) {
   }
   ui::end_list();
   ui::end_group();
+}
+
+// Shown in the day panel when no day is selected: this week and the
+// all-time records. Every category, ignoring the filter. Two columns when
+// there is room; otherwise one compact column without the category split.
+void App::draw_overview() {
+  const float s = ui::px();
+  const float avail = ui::avail_width();
+  const bool two_columns = avail >= 560 * s;
+  const float x0 = ImGui::GetCursorPosX();
+  const float y0 = ImGui::GetCursorPosY();
+  // "Oct 18, 2026" -> "Oct 18"
+  auto month_day = [](Date d) {
+    const std::string full = format_short_date(d);
+    return full.substr(0, full.find(','));
+  };
+  // Label in gray, value at `value_x` (SameLine offsets count from the
+  // enclosing group's left edge).
+  auto pair = [](float value_x, const char* label, const std::string& value) {
+    ImGui::TextDisabled("%s", label);
+    ImGui::SameLine(value_x);
+    ImGui::TextUnformatted(value.c_str());
+  };
+
+  // This week.
+  const Date t = today();
+  const DateSpan week = week_of(t, config_.week_starts_on);
+  const DayTotal wk = total_between(all_days_, week.first, week.last);
+  const std::string grade = std::string(
+      grade_label(weekly_grade(all_days_, t, config_.week_starts_on, goals_)));
+  const std::string range = month_day(week.first) + " - " + month_day(week.last);
+  const float rvx = ImGui::CalcTextSize("Longest session  ").x;  // records' value column
+
+  if (two_columns) {
+    ImGui::Text("This week, %s", range.c_str());
+    const float wx = ImGui::CalcTextSize("Physics   ").x + 24 * s;
+    pair(wx, "Total", format_duration(wk.seconds));
+    pair(wx, "Grade", grade);
+    // Per-category split, most time first (room for a few).
+    int shown = 0;
+    for (const auto& c : wk.by_category) {
+      if (++shown > 4) break;
+      ImGui::TextDisabled("%s", fit_text(category_name(c.category_id), wx - 8 * s).c_str());
+      ImGui::SameLine(wx);
+      ImGui::TextUnformatted(format_duration(c.seconds).c_str());
+    }
+    if (wk.by_category.empty()) ImGui::TextDisabled("Nothing yet this week.");
+    // The records column has the longer lines, so it gets more room.
+    ImGui::SetCursorPos({x0 + std::floor(avail * 0.42f), y0});
+  } else {
+    pair(rvx, "This week", format_duration(wk.seconds) + ", grade " + grade);
+    ImGui::Spacing();
+  }
+
+  ImGui::BeginGroup();
+  ImGui::TextUnformatted("Records");
+  const Records& r = records_;
+  // Drop the year when space is tight.
+  auto when = [&](Date d) { return two_columns ? format_short_date(d) : month_day(d); };
+  pair(rvx, "Best day",
+       r.best_day ? format_duration(r.best_day->seconds) + " on " + when(r.best_day->day) : "-");
+  pair(rvx, "Longest session",
+       r.longest_session
+           ? format_duration(r.longest_session->seconds) + " on " + when(r.longest_session->day)
+           : "-");
+  pair(rvx, "Longest streak",
+       std::to_string(r.longest_streak) + (r.longest_streak == 1 ? " day" : " days"));
+  pair(rvx, "Total",
+       format_duration(r.total_seconds) + " in " + std::to_string(r.total_sessions) +
+           (r.total_sessions == 1 ? " session" : " sessions"));
+  ImGui::EndGroup();
+
+  if (two_columns) {
+    ImGui::Spacing();
+    ImGui::SetCursorPosX(x0);
+    ImGui::TextDisabled("Click a day in History to see its sessions.");
+  }
 }
 
 void App::draw_session_dialog() {

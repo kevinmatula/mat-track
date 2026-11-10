@@ -119,14 +119,19 @@ void App::draw_timer_panel() {
     ImGui::Spacing();
     ImGui::TextWrapped("Suspend detected; session time not counted for the gap.");
   }
+  draw_note_row();
 
   ui::end_group();
 }
 
-void App::draw_note_box() {
+// One row at the bottom of the timer panel after a session is logged.
+void App::draw_note_row() {
   if (!note_session_id_) return;
 
-  ui::begin_group("Note for last session", kPanelWidth * ui_scale_);
+  ImGui::Spacing();
+  ImGui::AlignTextToFramePadding();
+  ImGui::TextUnformatted("Note");
+  ImGui::SameLine();
   const float buttons = 2 * 75.0f * ui::px() + 2 * ImGui::GetStyle().ItemSpacing.x;
   bool save = ui::input_text("##note", note_buf_.data(), note_buf_.size(),
                              ui::avail_width() - buttons);
@@ -134,11 +139,11 @@ void App::draw_note_box() {
   save |= ui::button("Save", {}, true, true);
   ImGui::SameLine();
   const bool skip = ui::button("Skip");
-  ui::end_group();
 
   if (save) {
     try {
       db_->update_session_note(*note_session_id_, note_buf_.data());
+      reload_history();  // the day panel lists notes from the cache
       status_ = "Note saved.";
     } catch (const std::exception& e) {
       status_ = std::string("Error: note not saved (") + e.what() + ")";

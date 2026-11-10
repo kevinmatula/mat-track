@@ -29,6 +29,13 @@ Timer::Timer(TimerSettings settings) : settings_(settings) {
   settings_.long_break_every = std::max(1, settings_.long_break_every);
 }
 
+bool Timer::set_settings(TimerSettings settings) {
+  if (state_ != TimerState::Idle) return false;
+  settings_ = settings;
+  settings_.long_break_every = std::max(1, settings_.long_break_every);
+  return true;
+}
+
 bool Timer::start(std::int64_t category_id, MonoNs now, UnixSeconds now_utc) {
   if (state_ != TimerState::Idle) return false;
   begin_focus(category_id, now, now_utc);

@@ -113,6 +113,8 @@ bool App::init_data() {
 
   timer_ = Timer(TimerSettings::from_config(config_));
   try {
+    // config.toml may have been edited since the last run.
+    sync_goal(*db_, today(), config_.daily_goal_minutes);
     reload_categories();
     reload_history();
   } catch (const std::exception& e) {
@@ -265,21 +267,33 @@ void App::draw_frame() {
                    ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
   ImGui::PopStyleVar();
 
-  // Top row: the timer, and the selected day beside it. Like the history
-  // panel, the row stops growing at its default-window width.
+  // Everything above the status bar scrolls if the window is too short for
+  // it, so it never runs under the status bar.
+  ImGui::BeginChild("##content", {0, -ui::status_bar_height()}, ImGuiChildFlags_None);
+
+  // Like the history panel, rows stop growing at their default-window width.
+  const float row_w = kDefaultWindowWidth * ui_scale_ - 2 * ImGui::GetStyle().WindowPadding.x;
+  draw_header(std::min(ui::avail_width(), row_w));
+  ImGui::Spacing();
+
+  // The timer, and the selected day (or the overview) beside it.
   draw_timer_panel();
   timer_panel_h_ = ImGui::GetItemRectSize().y;
   const float spacing = ImGui::GetStyle().ItemSpacing.x;
   ImGui::SameLine(0, spacing);
-  const float row_w = kDefaultWindowWidth * ui_scale_ - 2 * ImGui::GetStyle().WindowPadding.x;
   const float day_w = std::min(ui::avail_width(), row_w - ImGui::GetItemRectSize().x - spacing);
   draw_day_panel(day_w, timer_panel_h_);
 
-  draw_note_box();
   draw_heatmap_panel();
+  ImGui::EndChild();
+
   draw_recovery_dialog();
   draw_session_dialog();
   draw_categories_dialog();
+  draw_settings_dialog();
+  if (ImGui::IsKeyPressed(ImGuiKey_F3) && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+    open_settings_dialog_ = true;
+  }
 
   const std::string data = "data: " + data_dir_.string();
   ui::status_bar({status_.c_str(), data.c_str()});
@@ -322,7 +336,35 @@ void App::reload_history() {
   all_categories_ = db_->categories(/*include_archived=*/true);
   category_names_.clear();
   for (const auto& c : all_categories_) category_names_[c.id] = c.name;
+  all_days_ = day_totals(sessions_, *tz_, config_.day_rollover_hour);
+  goals_ = GoalHistory(db_->goal_changes(), config_.daily_goal_minutes);
+  records_ = compute_records(sessions_, {.tz = tz_,
+                                         .rollover_hour = config_.day_rollover_hour,
+                                         .week_starts_on = config_.week_starts_on,
+                                         .streak_min_minutes = config_.streak_min_minutes});
   apply_filter();
+}
+
+void App::note_new_records(const Records& before) {
+  std::string text;
+  for (const RecordKind kind : new_records(before, records_)) {
+    std::string part;
+    switch (kind) {
+      case RecordKind::BestDay:
+        part = "best day " + format_duration(records_.best_day->seconds);
+        break;
+      case RecordKind::LongestSession:
+        part = "longest session " + format_duration(records_.longest_session->seconds);
+        break;
+      case RecordKind::BestWeek:
+        continue;  // not shown in the overview, so no banner either
+      case RecordKind::LongestStreak:
+        part = "longest streak " + std::to_string(records_.longest_streak) + " days";
+        break;
+    }
+    text += (text.empty() ? "" : ", ") + part;
+  }
+  if (!text.empty()) banner_ = "NEW RECORD: " + text;
 }
 
 void App::apply_filter() {
@@ -349,6 +391,10 @@ Date App::today() const { return day_key(now().utc, *tz_, config_.day_rollover_h
 
 void App::update_timer() {
   const Now n = now();
+  // Settings changed mid-session take effect once the timer is idle.
+  if (pending_timer_settings_ && timer_.set_settings(*pending_timer_settings_)) {
+    pending_timer_settings_.reset();
+  }
   const TimerState before = timer_.state();
   timer_.tick(n.mono, n.utc);
 
@@ -392,6 +438,7 @@ void App::start_session() {
   const Now n = now();
   if (!timer_.start(selected_category_, n.mono, n.utc)) return;
   silence();
+  banner_.clear();
   note_session_id_.reset();
   status_ = "Focus.";
   write_recovery(n.utc);
@@ -465,8 +512,10 @@ void App::handle_finished() {
 
   if (f.loggable) {
     try {
+      const Records before = records_;
       const std::int64_t id = db_->insert_session(f.session);
       reload_history();
+      note_new_records(before);
       note_session_id_ = id;
       note_buf_.fill('\0');
     } catch (const std::exception& e) {
@@ -538,8 +587,10 @@ void App::save_recovered_session() {
     s.category_id = categories_.front().id;
   }
   try {
+    const Records before = records_;
     db_->insert_session(s);
     reload_history();
+    note_new_records(before);
     status_ = "Recovered session: " + format_duration(s.duration_sec) + " logged.";
   } catch (const std::exception& e) {
     fail(std::string("Could not save the recovered session; the recovery file is kept.\n\n") +

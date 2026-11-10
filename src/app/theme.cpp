@@ -61,6 +61,13 @@ struct Group {
 };
 std::vector<Group> g_groups;
 
+// The open toolbar strip.
+struct Toolbar {
+  ImVec2 start;
+  float width;
+};
+Toolbar g_toolbar;
+
 // The open list view's column layout and outer rectangle.
 struct List {
   std::vector<float> x;  // column starts, relative to the row
@@ -469,6 +476,117 @@ void check_mark(bool checked) {
     dl->AddPolyline(pts, 3, p.text, 2 * g_px, ImDrawFlags_None);
   }
   ImGui::Dummy({size, ImGui::GetTextLineHeight()});
+}
+
+bool checkbox(const char* label, bool* value) {
+  const Palette& p = palette();
+  ImGui::PushStyleColor(ImGuiCol_FrameBg, g4(p.field));
+  ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, g4(p.field));
+  ImGui::PushStyleColor(ImGuiCol_FrameBgActive, g4(p.light));
+  const bool changed = ImGui::Checkbox(label, value);
+  ImGui::PopStyleColor(3);
+  // The box is the square at the start of the item.
+  const ImVec2 a = ImGui::GetItemRectMin();
+  const float h = ImGui::GetFrameHeight();
+  draw_bevel(ImGui::GetWindowDrawList(), a, {a.x + h, a.y + h}, Bevel::Sunken);
+  return changed;
+}
+
+namespace {
+
+// Shared by the number fields: a sunken frame around whatever ImGui drew.
+void sunken_last_item() {
+  draw_bevel(ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+             Bevel::Sunken);
+}
+
+}  // namespace
+
+bool input_int(const char* label, int* value, int min, int max, float width) {
+  ImGui::SetNextItemWidth(width);
+  int v = *value;
+  ImGui::InputInt(label, &v, 0, 0);
+  sunken_last_item();
+  v = std::clamp(v, min, max);
+  const bool changed = v != *value;
+  *value = v;
+  return changed;
+}
+
+bool input_minutes(const char* label, double* value, double min, double max, float width) {
+  ImGui::SetNextItemWidth(width);
+  double v = *value;
+  ImGui::InputDouble(label, &v, 0, 0, "%g");
+  sunken_last_item();
+  v = std::clamp(v, min, max);
+  const bool changed = v != *value;
+  *value = v;
+  return changed;
+}
+
+void progress_bar(float fraction, ImVec2 size) {
+  const Palette& p = palette();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  const ImVec2 a = snap(ImGui::GetCursorScreenPos());
+  const ImVec2 b = {a.x + std::floor(size.x), a.y + std::floor(size.y)};
+  dl->AddRectFilled(a, b, p.field);
+  draw_bevel(dl, a, b, Bevel::Sunken);
+
+  // Blocks, as in the classic progress bar, inside a 2px margin.
+  const float inner_x0 = a.x + 3 * g_px;
+  const float inner_x1 = b.x - 3 * g_px;
+  const float bh = (b.y - a.y) - 6 * g_px;
+  const float block = std::max(4 * g_px, std::floor(bh * 0.6f));
+  const float gap = 2 * g_px;
+  const float filled = inner_x0 + (inner_x1 - inner_x0) * std::clamp(fraction, 0.0f, 1.0f);
+  for (float x = inner_x0; x + block <= filled + 0.5f; x += block + gap) {
+    // Text color: dark on the white field, light on the inverted black one.
+    dl->AddRectFilled({x, a.y + 3 * g_px}, {x + block, b.y - 3 * g_px}, p.text);
+  }
+  ImGui::Dummy(size);
+}
+
+void begin_toolbar(float width) {
+  g_toolbar = {snap(ImGui::GetCursorScreenPos()), std::floor(width)};
+  ImGui::BeginGroup();
+  ImGui::SetCursorScreenPos({g_toolbar.start.x + 8 * g_px, g_toolbar.start.y + 4 * g_px});
+  ImGui::BeginGroup();
+}
+
+void end_toolbar() {
+  ImGui::EndGroup();
+  const float bottom = std::floor(ImGui::GetItemRectMax().y + 4 * g_px);
+  const ImVec2 a = g_toolbar.start;
+  const ImVec2 b = {a.x + g_toolbar.width, bottom};
+  draw_bevel(ImGui::GetWindowDrawList(), a, b, Bevel::Raised);
+  ImGui::SetCursorScreenPos({a.x, b.y});
+  ImGui::Dummy({g_toolbar.width, 0});
+  ImGui::EndGroup();
+}
+
+void toolbar_separator() {
+  const float h = ImGui::GetFrameHeight();
+  const ImVec2 pos = snap(ImGui::GetCursorScreenPos());
+  const Palette& p = palette();
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->AddRectFilled({pos.x + 4 * g_px, pos.y}, {pos.x + 5 * g_px, pos.y + h}, p.shadow);
+  dl->AddRectFilled({pos.x + 5 * g_px, pos.y}, {pos.x + 6 * g_px, pos.y + h}, p.highlight);
+  ImGui::Dummy({10 * g_px, h});
+}
+
+bool banner(const char* text, float width) {
+  const Palette& p = palette();
+  const float h = ImGui::GetFrameHeight();
+  const ImVec2 a = snap(ImGui::GetCursorScreenPos());
+  const ImVec2 b = {a.x + std::floor(width), a.y + h};
+  const bool clicked = ImGui::InvisibleButton("##banner", {width, h});
+  ImDrawList* dl = ImGui::GetWindowDrawList();
+  dl->AddRectFilled(a, b, p.well);
+  draw_bevel(dl, a, b, Bevel::Sunken);
+  dl->PushClipRect(a, b, true);
+  dl->AddText({a.x + 8 * g_px, a.y + (h - ImGui::GetTextLineHeight()) * 0.5f}, p.well_text, text);
+  dl->PopClipRect();
+  return clicked;
 }
 
 bool begin_dialog(const char* title) {

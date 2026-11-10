@@ -8,8 +8,10 @@ timer, a GitHub-style heatmap of study history, and light gamification.
 > app has a working pomodoro timer that logs sessions, and a history panel
 > with year, month and week heatmaps (per-day tooltips, period totals). Click
 > a day to see and edit its sessions; filter the history by category; manage
-> categories from the timer's Edit... button. The gamification header and
-> polish are still to come.
+> categories from the timer's Edit... button. A header shows level, XP,
+> streak and today's grade (with new-record banners); with no day selected
+> the day panel shows this week and your records. Settings... (or F3) edits
+> goals, timer lengths and alerts. Polish (shortcuts, install) is still to come.
 
 ## Build dependencies (Linux Mint 22 / Ubuntu 24.04)
 

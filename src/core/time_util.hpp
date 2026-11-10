@@ -48,6 +48,9 @@ std::string format_duration(std::int64_t seconds);
 // Local wall-clock time of a moment, "HH:MM" (24-hour).
 std::string format_clock(UnixSeconds utc, const std::chrono::time_zone& tz);
 
+// "Oct 18, 2026"
+std::string format_short_date(Date d);
+
 // "YYYY-MM-DD"
 std::string format_date(Date d);
 std::optional<Date> parse_date(std::string_view s);

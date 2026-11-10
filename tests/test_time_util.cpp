@@ -144,6 +144,9 @@ TEST_CASE("rollover hour is validated", "[time_util]") {
 }
 
 TEST_CASE("date helpers", "[time_util]") {
+  CHECK(format_short_date(ymd(2026, 10, 18)) == "Oct 18, 2026");
+  CHECK(format_short_date(ymd(2024, 2, 29)) == "Feb 29, 2024");
+  CHECK(format_short_date(ymd(2025, 1, 1)) == "Jan 1, 2025");
   CHECK(format_date(ymd(2024, 3, 9)) == "2024-03-09");
   CHECK(parse_date("2024-03-09") == ymd(2024, 3, 9));
   CHECK(parse_date("2024-02-29") == ymd(2024, 2, 29));

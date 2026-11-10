@@ -87,7 +87,7 @@ struct Well {
   float s;
   float line_h;
   const DayTotals& days;
-  int goal;
+  const GoalHistory& goals;  // each day is shaded against its own goal
   Date today;
   WeekStart starts_on;
   bool can_hover;
@@ -98,7 +98,7 @@ struct Well {
     const auto it = days.find(d);
     return it == days.end() ? 0 : it->second.seconds;
   }
-  int level(Date d) const { return intensity_level(seconds(d), goal); }
+  int level(Date d) const { return intensity_level(seconds(d), goals.on(d)); }
   void hover(Date d, ImVec2 a, ImVec2 b) const {
     if (can_hover && d <= today && ImGui::IsMouseHoveringRect(a, b)) hovered = d;
   }
@@ -405,7 +405,7 @@ void App::draw_heatmap_panel() {
                   s,
                   line_h,
                   day_totals_,
-                  config_.daily_goal_minutes,
+                  goals_,
                   today_day,
                   config_.week_starts_on,
                   ImGui::IsWindowHovered(),
@@ -459,7 +459,7 @@ void App::draw_day_tooltip(Date day) {
   // Just the count and the date: clicking the day shows the details.
   const auto it = day_totals_.find(day);
   const int n = it == day_totals_.end() ? 0 : it->second.sessions;
-  const std::string when = short_date(day) + ", " + std::to_string(static_cast<int>(day.year()));
+  const std::string when = format_short_date(day);
   if (n == 0) {
     ImGui::Text("No sessions on %s", when.c_str());
   } else {

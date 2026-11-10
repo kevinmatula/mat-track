@@ -61,6 +61,14 @@ std::string format_clock(UnixSeconds utc, const chr::time_zone& tz) {
   return buf;
 }
 
+std::string format_short_date(Date d) {
+  static constexpr const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  return std::string(kMonths[static_cast<unsigned>(d.month()) - 1]) + " " +
+         std::to_string(static_cast<unsigned>(d.day())) + ", " +
+         std::to_string(static_cast<int>(d.year()));
+}
+
 std::string format_date(Date d) {
   char buf[16];
   std::snprintf(buf, sizeof buf, "%04d-%02u-%02u", static_cast<int>(d.year()),

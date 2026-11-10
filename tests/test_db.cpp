@@ -228,3 +228,34 @@ TEST_CASE("transactions roll back on exception and can nest", "[db]") {
   });
   CHECK(db.all_sessions().size() == 2);
 }
+
+TEST_CASE("goal history: empty at first, upserts by day, sorted", "[db][goals]") {
+  Db db(":memory:");
+  CHECK(db.goal_changes().empty());
+  const Date a = Date{std::chrono::year{2026}, std::chrono::month{11}, std::chrono::day{9}};
+  const Date b = Date{std::chrono::year{2026}, std::chrono::month{6}, std::chrono::day{1}};
+  db.set_goal_from(a, 60);
+  db.set_goal_from(b, 120);
+  CHECK(db.goal_changes() == std::vector<GoalChange>{{b, 120}, {a, 60}});
+
+  db.set_goal_from(a, 45);  // changing it again the same day replaces it
+  CHECK(db.goal_changes() == std::vector<GoalChange>{{b, 120}, {a, 45}});
+  CHECK_THROWS_AS(db.set_goal_from(a, 0), std::invalid_argument);
+}
+
+TEST_CASE("a v1 database is upgraded to v2 and keeps its data", "[db]") {
+  TempDir dir;
+  const std::string path = (dir.path / "mat-track.db").string();
+  std::int64_t sid = 0;
+  {
+    Db db(path);
+    sid = db.insert_session(make_session(general_id(db), 1000, 600));
+    // Turn it back into a v1 database.
+    db.exec("DROP TABLE goal_changes; PRAGMA user_version = 1");
+  }
+  Db db(path);
+  CHECK(db.schema_version() == 2);
+  CHECK(db.goal_changes().empty());
+  CHECK(db.session(sid).has_value());
+  CHECK(db.categories().size() == 1);
+}
