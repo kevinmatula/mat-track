@@ -301,6 +301,7 @@ void App::draw_frame() {
 
   draw_recovery_dialog();
   draw_session_dialog();
+  draw_add_session_dialog();
   draw_categories_dialog();
   draw_settings_dialog();
   draw_stop_dialog();

@@ -113,6 +113,9 @@ class App {
   // ---- panels (ui_day_panel.cpp) ----
   void draw_day_panel(float width, float height);
   void draw_session_dialog();
+  // Log work done without the timer, on the selected day.
+  void open_add_session_dialog(Date day);
+  void draw_add_session_dialog();
   void draw_overview();
   // ---- panels (ui_categories.cpp) ----
   void draw_categories_dialog();
@@ -167,6 +170,15 @@ class App {
   // Day shown in the day panel (clicked in the History panel).
   std::optional<Date> selected_day_;
   float timer_panel_h_ = 0;  // last frame's, so the day panel can match it
+
+  // "Add session" dialog.
+  bool open_add_dialog_ = false;
+  Date add_day_{};
+  std::array<char, 8> add_start_{};  // "HH:MM"
+  int add_minutes_ = 50;
+  std::int64_t add_category_ = 0;
+  std::array<char, 256> add_note_{};
+  std::string add_error_;
 
   // "Edit session" dialog.
   bool open_session_dialog_ = false;

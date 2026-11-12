@@ -181,3 +181,48 @@ TEST_CASE("format_clock gives local HH:MM", "[time_util]") {
   CHECK(format_clock(1730615400, ny()) == "01:30");
   CHECK(format_clock(0, *locate_zone("UTC")) == "00:00");
 }
+
+TEST_CASE("parse_clock", "[time_util]") {
+  CHECK(parse_clock("09:05") == std::pair{9, 5});
+  CHECK(parse_clock("9:05") == std::pair{9, 5});
+  CHECK(parse_clock("23:59") == std::pair{23, 59});
+  CHECK(parse_clock("00:00") == std::pair{0, 0});
+  CHECK_FALSE(parse_clock("24:00"));
+  CHECK_FALSE(parse_clock("12:60"));
+  CHECK_FALSE(parse_clock("12:5"));
+  CHECK_FALSE(parse_clock("1230"));
+  CHECK_FALSE(parse_clock(":30"));
+  CHECK_FALSE(parse_clock("ab:cd"));
+  CHECK_FALSE(parse_clock(""));
+  CHECK_FALSE(parse_clock("-1:30"));
+}
+
+TEST_CASE("study_day_time maps a clock time into the study day", "[time_util]") {
+  const Date d = ymd(2024, 6, 15);
+  SECTION("daytime is on the same calendar day") {
+    CHECK(study_day_time(d, 23, 50, ny(), 4) == 1718509800);  // 2024-06-15 23:50
+  }
+  SECTION("before the rollover hour is after midnight") {
+    CHECK(study_day_time(d, 0, 20, ny(), 4) == 1718511600);   // 2024-06-16 00:20
+    CHECK(study_day_time(d, 3, 59, ny(), 4) == 1718524740);   // 2024-06-16 03:59
+  }
+  SECTION("the rollover hour itself starts the study day") {
+    CHECK(study_day_time(d, 4, 0, ny(), 4) == 1718438400);    // 2024-06-15 04:00
+  }
+  SECTION("with rollover 0 it's the plain calendar day") {
+    CHECK(study_day_time(d, 0, 20, ny(), 0) == 1718425200);   // 2024-06-15 00:20
+  }
+  SECTION("every result lands back in the same study day") {
+    for (int rollover = 0; rollover <= 12; ++rollover) {
+      for (int h = 0; h < 24; ++h) {
+        INFO("rollover " << rollover << " hour " << h);
+        CHECK(day_key(study_day_time(d, h, 30, ny(), rollover), ny(), rollover) == d);
+      }
+    }
+  }
+  SECTION("across spring-forward the result is still in the study day") {
+    // 2024-03-10 02:30 doesn't exist in New York; it's the study day of Mar 9.
+    const Date mar9 = ymd(2024, 3, 9);
+    CHECK(day_key(study_day_time(mar9, 2, 30, ny(), 4), ny(), 4) == mar9);
+  }
+}

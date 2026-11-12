@@ -2,6 +2,7 @@
 // "Edit session" dialog to change a session's category or note, or delete it.
 #include <imgui.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -50,11 +51,17 @@ void App::draw_day_panel(float width, float height) {
   std::int64_t total = 0;
   for (const auto& x : sessions) total += x.duration_sec;
 
+  // Date on the left, "Add session..." on the right of the same line.
+  const float line_w = ui::avail_width();
+  const float add_w = 130 * s;
+  ImGui::AlignTextToFramePadding();
   ImGui::TextUnformatted(weekday_and_date(day).c_str());
   if (filter_) {
     ImGui::SameLine();
     ImGui::TextDisabled("(%s only)", category_name(*filter_));
   }
+  ImGui::SameLine(line_w - add_w);  // SameLine offsets count from the group's left edge
+  if (ui::button("Add session...", {add_w, 0})) open_add_session_dialog(day);
   if (sessions.empty()) {
     ImGui::TextDisabled("No study");
   } else {
@@ -172,10 +179,107 @@ void App::draw_overview() {
        format_duration(r.total_seconds) + " in " + std::to_string(r.total_sessions) +
            (r.total_sessions == 1 ? " session" : " sessions"));
   ImGui::EndGroup();
+}
 
+void App::open_add_session_dialog(Date day) {
+  add_day_ = day;
+  // Start: for today, one focus length ago (as if a session just ended);
+  // for an earlier day, midday.
+  const Now n = now();
+  const std::int64_t focus_s = timer_.focus_target() / kNsPerSecond;
+  std::string start = "12:00";
+  if (day == today() && day_key(n.utc - focus_s, *tz_, config_.day_rollover_hour) == day) {
+    start = format_clock(n.utc - focus_s, *tz_);
+  }
+  add_start_.fill('\0');
+  std::strncpy(add_start_.data(), start.c_str(), add_start_.size() - 1);
+  add_minutes_ = std::max<int>(1, static_cast<int>(focus_s / 60));
+  add_category_ = filter_ ? *filter_ : selected_category_;
+  add_note_.fill('\0');
+  add_error_.clear();
+  open_add_dialog_ = true;
+}
+
+void App::draw_add_session_dialog() {
+  constexpr const char* kTitle = "Add session";
+  if (open_add_dialog_) {
+    ImGui::OpenPopup(kTitle);
+    open_add_dialog_ = false;
+  }
+  if (!ui::begin_dialog(kTitle)) return;
+
+  const float s = ui::scale();
+  const float label_w = ImGui::CalcTextSize("Category").x + 12 * s;
+  const float x = label_w + ImGui::GetStyle().WindowPadding.x;
+  const float field_w = 300 * s;
+  auto label = [&](const char* text) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(text);
+    ImGui::SameLine(x);
+  };
+
+  ImGui::TextUnformatted(weekday_and_date(add_day_).c_str());
   ImGui::Spacing();
-  ImGui::SetCursorPosX(x0);
-  ImGui::TextDisabled("Click a day in History to see its sessions.");
+  label("Start");
+  bool enter = ui::input_text("##add_start", add_start_.data(), add_start_.size(), 80 * s);
+  ImGui::SameLine();
+  // The study day's span, from the rollover setting (default "4 AM - 4 AM").
+  const int r = config_.day_rollover_hour;
+  const std::string hour = std::to_string(r == 0 ? 12 : r) + (r == 12 ? " PM" : " AM");
+  ImGui::TextDisabled("Day runs %s - %s", hour.c_str(), hour.c_str());
+  label("Duration");
+  ui::input_int("##add_minutes", &add_minutes_, 1, 1440, 80 * s);
+  ImGui::SameLine();
+  ImGui::TextUnformatted("minutes");
+  label("Category");
+  ImGui::SetNextItemWidth(field_w);
+  if (ui::begin_combo("##add_category", category_name(add_category_))) {
+    for (const auto& c : categories_) {
+      if (ImGui::Selectable(c.name.c_str(), c.id == add_category_)) add_category_ = c.id;
+    }
+    ui::end_combo();
+  }
+  label("Note");
+  enter |= ui::input_text("##add_note", add_note_.data(), add_note_.size(), field_w);
+
+  if (!add_error_.empty()) {
+    ImGui::Spacing();
+    ImGui::TextUnformatted(add_error_.c_str());
+  }
+  ImGui::Spacing();
+  if (ui::button("Add", {}, true, true) || enter) {
+    const auto clock = parse_clock(add_start_.data());
+    if (!clock) {
+      add_error_ = "Enter the start time as HH:MM, e.g. 14:30.";
+    } else {
+      Session x;
+      x.start_utc =
+          study_day_time(add_day_, clock->first, clock->second, *tz_, config_.day_rollover_hour);
+      x.duration_sec = std::int64_t{add_minutes_} * 60;
+      x.end_utc = x.start_utc + x.duration_sec;
+      x.category_id = add_category_;
+      x.note = add_note_.data();
+      x.completed = true;  // work that was actually done
+      if (x.end_utc > now().utc) {
+        add_error_ = "That session would end in the future.";
+      } else {
+        try {
+          const Records before = records_;
+          db_->insert_session(x);
+          reload_history();
+          note_new_records(before);
+          status_ = "Added " + format_duration(x.duration_sec) + " on " +
+                    format_short_date(add_day_) + ".";
+          ImGui::CloseCurrentPopup();
+        } catch (const std::exception& e) {
+          add_error_ = std::string("Could not add it: ") + e.what();
+        }
+      }
+    }
+  }
+  ImGui::SameLine();
+  if (ui::button("Cancel")) ImGui::CloseCurrentPopup();
+  ui::end_dialog();
 }
 
 void App::draw_session_dialog() {

@@ -42,6 +42,31 @@ Date add_days(Date d, int days) {
   return Date{chr::sys_days{d} + chr::days{days}};
 }
 
+std::optional<std::pair<int, int>> parse_clock(std::string_view s) {
+  const auto colon = s.find(':');
+  if (colon == std::string_view::npos || colon == 0 || colon > 2 || s.size() - colon != 3) {
+    return std::nullopt;
+  }
+  auto parse_int = [](std::string_view part, int& out) {
+    const auto* end = part.data() + part.size();
+    const auto [ptr, ec] = std::from_chars(part.data(), end, out);
+    return ec == std::errc{} && ptr == end;
+  };
+  int h = 0, m = 0;
+  if (!parse_int(s.substr(0, colon), h) || !parse_int(s.substr(colon + 1), m)) return std::nullopt;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return std::nullopt;
+  return std::pair{h, m};
+}
+
+UnixSeconds study_day_time(Date day, int hour, int minute, const chr::time_zone& tz,
+                           int rollover_hour) {
+  check_rollover(rollover_hour);
+  const Date calendar_day = hour < rollover_hour ? add_days(day, 1) : day;
+  const chr::local_seconds local =
+      chr::local_days{calendar_day} + chr::hours{hour} + chr::minutes{minute};
+  return local_to_utc(local, tz);
+}
+
 std::string format_duration(std::int64_t seconds) {
   seconds = std::max<std::int64_t>(0, seconds);
   if (seconds > 0 && seconds < 60) return std::to_string(seconds) + "s";
